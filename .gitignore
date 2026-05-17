@@ -39,3 +39,20 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Environment
+.env
+.env.local
+.env.production
+
+cat >> .gitignore << 'EOF'
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Environment
+.env
+.env.local
+.env.production
