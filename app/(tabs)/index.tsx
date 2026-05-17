@@ -1,31 +1,284 @@
-import { StyleSheet } from 'react-native';
+/**
+ * ホーム画面
+ *
+ * 最も重要な画面 - 毎日見る
+ * シート進捗リング + 今日の服薬カード + 履歴リンク
+ */
 
-import EditScreenInfo from '@/components/EditScreenInfo';
-import { Text, View } from '@/components/Themed';
+import React from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  Pressable,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { toast } from '@/lib/toast';
+import { ChevronRight } from 'lucide-react-native';
+import { palette, typography, spacing, radius } from '@/design-tokens';
+import { SheetProgressRing } from '@/components/domain/SheetProgressRing';
+import { DoseCard } from '@/components/domain/DoseCard';
+import {
+  useActiveMedication,
+  useCurrentSheet,
+  useTodaysDose,
+  useMarkDoseTaken,
+} from '@/lib/queries/hooks';
+import { getDoseRecordsBySheet } from '@/lib/db/queries/doseRecords';
 
-export default function TabOneScreen() {
+export default function HomeScreen() {
+  const router = useRouter();
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  // Data fetching
+  const { data: medication, isLoading: medicationLoading, refetch: refetchMedication } = useActiveMedication();
+  const { data: sheet, isLoading: sheetLoading, refetch: refetchSheet } = useCurrentSheet(medication?.id);
+  const { data: todaysDose, isLoading: doseLoading, refetch: refetchDose } = useTodaysDose(sheet?.id);
+
+  // Mutation
+  const markDoseTaken = useMarkDoseTaken();
+
+  const isLoading = medicationLoading || sheetLoading || doseLoading;
+
+  // Calculate progress
+  const [currentDay, setCurrentDay] = React.useState(0);
+  const [totalDays, setTotalDays] = React.useState(0);
+  const [daysUntilBreak, setDaysUntilBreak] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!sheet || !medication) return;
+
+    // Calculate current day based on taken doses
+    getDoseRecordsBySheet(sheet.id).then((records) => {
+      const takenCount = records.filter((r) => r.status === 'taken').length;
+      const current = takenCount + 1; // Current day is last taken + 1
+
+      // Parse sheet pattern
+      const pattern = JSON.parse(medication.sheetPatternJson) as {
+        active: number;
+        placebo?: number;
+        max?: number;
+      };
+      const total = pattern.max || pattern.active + (pattern.placebo ?? 0);
+
+      // Days until break
+      const untilBreak = Math.max(0, pattern.active - current + 1);
+
+      setCurrentDay(current);
+      setTotalDays(total);
+      setDaysUntilBreak(untilBreak);
+    });
+  }, [sheet, medication]);
+
+  // Pull to refresh
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refetchMedication(), refetchSheet(), refetchDose()]);
+    setRefreshing(false);
+  }, [refetchMedication, refetchSheet, refetchDose]);
+
+  // Handle dose tap
+  const handleDoseTap = React.useCallback(async () => {
+    if (!todaysDose) return;
+
+    try {
+      await markDoseTaken.mutateAsync({
+        doseRecordId: todaysDose.id,
+        takenAt: new Date(),
+        via: 'app',
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      toast.success('服薬を記録しました');
+    } catch (error) {
+      console.error('[HomeScreen] Failed to mark dose:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      toast.error(error, '記録に失敗しました');
+    }
+  }, [todaysDose, markDoseTaken]);
+
+  // Navigate to history
+  const handleViewHistory = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/(tabs)/history');
+  };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>読み込み中...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Error state - no medication
+  if (!medication) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>ピルが登録されていません</Text>
+          <Text style={styles.errorText}>
+            設定からピルを登録してください
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Error state - no sheet
+  if (!sheet) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>シートが開始されていません</Text>
+          <Text style={styles.errorText}>
+            新しいシートを開始してください
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Error state - no dose record for today
+  if (!todaysDose) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>今日の服薬記録がありません</Text>
+          <Text style={styles.errorText}>
+            シートに問題がある可能性があります
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Tab One</Text>
-      <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
-      <EditScreenInfo path="app/(tabs)/index.tsx" />
-    </View>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {/* Progress Ring */}
+        <View style={styles.ringSection}>
+          <SheetProgressRing
+            currentDay={currentDay}
+            totalDays={totalDays}
+            sheetNumber={sheet.sheetNumber}
+            daysUntilBreak={daysUntilBreak}
+          />
+        </View>
+
+        {/* Today's Dose Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>今日の服薬</Text>
+          <DoseCard
+            medication={medication}
+            doseRecord={todaysDose}
+            onTap={handleDoseTap}
+          />
+        </View>
+
+        {/* History Link */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.historyLink,
+            pressed && styles.historyLinkPressed,
+          ]}
+          onPress={handleViewHistory}
+          accessibilityLabel="今週の記録を見る"
+          accessibilityRole="button"
+        >
+          <Text style={styles.historyLinkText}>今週の記録を見る</Text>
+          <ChevronRight size={20} color={palette.primary} />
+        </Pressable>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: palette.cream,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  content: {
+    paddingVertical: spacing['2xl'],
+  },
+  loadingContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+  loadingText: {
+    fontSize: typography.scale.body,
+    color: palette.muted,
   },
-  separator: {
-    marginVertical: 30,
-    height: 1,
-    width: '80%',
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  errorTitle: {
+    fontSize: typography.scale.h2,
+    fontWeight: typography.weight.bold,
+    color: palette.ink,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: typography.scale.body,
+    color: palette.muted,
+    textAlign: 'center',
+  },
+  ringSection: {
+    alignItems: 'center',
+    marginBottom: spacing['3xl'],
+  },
+  section: {
+    paddingHorizontal: spacing.xl,
+    marginBottom: spacing.xl,
+  },
+  sectionTitle: {
+    fontSize: typography.scale.h3,
+    fontWeight: typography.weight.semibold,
+    color: palette.ink,
+    marginBottom: spacing.lg,
+  },
+  historyLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+    marginHorizontal: spacing.xl,
+    marginTop: spacing.lg,
+    backgroundColor: palette.primaryBg,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: palette.primarySoft,
+  },
+  historyLinkPressed: {
+    opacity: 0.7,
+  },
+  historyLinkText: {
+    fontSize: typography.scale.body,
+    fontWeight: typography.weight.semibold,
+    color: palette.primary,
+    marginRight: spacing.sm,
   },
 });
