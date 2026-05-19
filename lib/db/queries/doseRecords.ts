@@ -204,6 +204,34 @@ export async function undoDoseRecord(doseRecordId: string): Promise<void> {
 }
 
 /**
+ * 未来の日付の服薬記録をクリア（開発・デバッグ用）
+ */
+export async function clearFutureDoseRecords(): Promise<number> {
+  const db = getDb();
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  // 未来の日付で 'taken' になっているレコードを 'scheduled' に戻す
+  const result = await db
+    .update(doseRecords)
+    .set({
+      status: 'scheduled',
+      actualTakenAt: null,
+      takenVia: null,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(
+      and(
+        // scheduled_date が今日より未来
+        (doseRecords.scheduledDate as any) > today,
+        eq(doseRecords.status, 'taken')
+      )
+    );
+
+  console.log(`[DoseRecords] Cleared future dose records`);
+  return 0; // Drizzleは影響を受けた行数を返さないため、0を返す
+}
+
+/**
  * 服薬達成率を計算
  */
 export async function calculateAdherenceRate(

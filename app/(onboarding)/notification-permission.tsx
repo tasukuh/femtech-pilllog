@@ -14,6 +14,7 @@ import { palette, typography, spacing, radius } from '@/design-tokens';
 import { requestNotificationPermission } from '@/lib/notifications/setup';
 import { createMedication } from '@/lib/db/queries/pillMedications';
 import { initializeSheet } from '@/lib/db/queries/sheets';
+import { setOnboardingStatus } from '@/lib/db/queries/appSettings';
 import { useAppStore } from '@/stores/appStore';
 import { format, subDays } from 'date-fns';
 
@@ -140,11 +141,19 @@ export default function NotificationPermissionScreen() {
         throw new Error(`Sheet initialization failed: ${sheetError}`);
       }
 
-      // オンボーディング完了
+      // オンボーディング完了状態をデータベースに保存
+      console.log('[Onboarding] Saving onboarding status to DB...');
+      await setOnboardingStatus(true);
+      console.log('[Onboarding] Onboarding status saved successfully');
+
+      // メモリ内の状態も更新
+      console.log('[Onboarding] Updating in-memory state...');
       completeOnboarding();
+      console.log('[Onboarding] State updated successfully');
 
       // ホーム画面に遷移
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      console.log('[Onboarding] Navigating to home...');
       router.replace('/(tabs)');
     } catch (error) {
       console.error('[Onboarding] Setup failed:', error);

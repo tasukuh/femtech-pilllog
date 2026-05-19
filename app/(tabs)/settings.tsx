@@ -34,14 +34,20 @@ import {
   toggleSound,
   parseReminderIntervals,
 } from '@/lib/db/queries/notificationSettings';
+import { setOnboardingStatus } from '@/lib/db/queries/appSettings';
+import { clearFutureDoseRecords } from '@/lib/db/queries/doseRecords';
 import { resetDB } from '@/lib/db/index';
 import { formatTime, parseTime } from '@/lib/utils/date';
+import { useAppStore } from '@/stores/appStore';
+import { useRouter } from 'expo-router';
 
 // アプリバージョン（app.jsonから取得）
 const APP_VERSION = '1.0.0';
 
 export default function SettingsScreen() {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const { resetOnboarding } = useAppStore();
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [tempTime, setTempTime] = useState<Date | null>(null);
 
@@ -97,6 +103,34 @@ export default function SettingsScreen() {
     },
   });
 
+  // 未来のデータをクリア
+  const handleClearFutureData = async () => {
+    Alert.alert(
+      '未来のデータをクリア',
+      '未来の日付に誤って記録したデータをクリアします。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: 'クリアする',
+          onPress: async () => {
+            try {
+              await clearFutureDoseRecords();
+              queryClient.invalidateQueries({ queryKey: ['dose'] });
+              queryClient.invalidateQueries({ queryKey: ['doseRecords'] });
+              queryClient.invalidateQueries({ queryKey: ['sheet'] });
+              queryClient.invalidateQueries({ queryKey: ['monthStats'] });
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert('完了', '未来のデータをクリアしました');
+            } catch (error) {
+              Alert.alert('エラー', 'データのクリアに失敗しました');
+              console.error('[Settings] Failed to clear future data:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // データ削除
   const handleDeleteData = () => {
     Alert.alert(
@@ -119,10 +153,26 @@ export default function SettingsScreen() {
                   style: 'destructive',
                   onPress: async () => {
                     try {
+                      console.log('[Settings] Deleting all data...');
+
+                      // データベースをリセット
                       await resetDB();
+
+                      // オンボーディング状態をリセット（DB）
+                      await setOnboardingStatus(false);
+
+                      // メモリ内の状態もリセット
+                      resetOnboarding();
+
+                      // キャッシュをクリア
                       queryClient.clear();
+
+                      console.log('[Settings] All data deleted, redirecting to onboarding...');
+
                       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                      Alert.alert('削除しました', 'すべてのデータを削除しました');
+
+                      // ウェルカム画面に遷移
+                      router.replace('/(onboarding)/welcome');
                     } catch (error) {
                       Alert.alert('エラー', 'データの削除に失敗しました');
                       console.error('[Settings] Failed to delete data:', error);
@@ -357,13 +407,32 @@ export default function SettingsScreen() {
           <Card style={styles.settingCard}>
             <Pressable
               style={styles.settingRow}
+              onPress={handleClearFutureData}
+              accessibilityRole="button"
+              accessibilityLabel="未来のデータをクリア"
+            >
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>
+                  未来のデータをクリア
+                </Text>
+                <Text style={styles.settingHint}>
+                  誤って記録した未来の日付をクリア
+                </Text>
+              </View>
+              <Trash2 color={palette.primary} size={20} />
+            </Pressable>
+
+            <View style={styles.divider} />
+
+            <Pressable
+              style={styles.settingRow}
               onPress={handleDeleteData}
               accessibilityRole="button"
               accessibilityLabel="データを削除"
             >
               <View style={styles.settingLeft}>
                 <Text style={[styles.settingLabel, styles.dangerLabel]}>
-                  データを削除
+                  すべてのデータを削除
                 </Text>
                 <Text style={styles.settingHint}>
                   この操作は取り消せません

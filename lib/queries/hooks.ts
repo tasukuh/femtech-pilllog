@@ -11,6 +11,7 @@ import { getCurrentSheet } from '../db/queries/sheets';
 import {
   getTodaysDoseRecord,
   markDoseAsTaken as markDoseAsTakenDb,
+  undoDoseRecord as undoDoseRecordDb,
 } from '../db/queries/doseRecords';
 import type { PillMedication, Sheet, DoseRecord } from '../db/schema';
 
@@ -76,14 +77,72 @@ export function useMarkDoseTaken() {
     }) => {
       await markDoseAsTakenDb(doseRecordId, takenAt, via);
     },
-    onSuccess: () => {
-      // 関連するクエリを無効化して再フェッチを促す
-      queryClient.invalidateQueries({ queryKey: ['dose'] });
-      queryClient.invalidateQueries({ queryKey: ['sheet'] });
-      console.log('[Hooks] Invalidated dose and sheet queries');
+    onSuccess: async () => {
+      // 関連するクエリを無効化して即座に再フェッチ
+      await queryClient.invalidateQueries({
+        queryKey: ['dose'],
+        refetchType: 'active', // アクティブなクエリのみ再フェッチ
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['doseRecords'], // 履歴画面用
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['sheet'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['currentSheet'], // 履歴画面用
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['monthStats'], // 月次統計も更新
+        refetchType: 'active',
+      });
+      console.log('[Hooks] Invalidated and refetched all dose-related queries');
     },
     onError: (error: Error) => {
       console.error('[Hooks] Failed to mark dose as taken:', error);
+    },
+  });
+}
+
+/**
+ * 服薬記録を取り消すミューテーション
+ */
+export function useUndoDoseRecord() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ doseRecordId }: { doseRecordId: string }) => {
+      await undoDoseRecordDb(doseRecordId);
+    },
+    onSuccess: async () => {
+      // 関連するクエリを無効化して即座に再フェッチ
+      await queryClient.invalidateQueries({
+        queryKey: ['dose'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['doseRecords'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['sheet'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['currentSheet'],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['monthStats'],
+        refetchType: 'active',
+      });
+      console.log('[Hooks] Dose record undone, queries invalidated');
+    },
+    onError: (error: Error) => {
+      console.error('[Hooks] Failed to undo dose record:', error);
     },
   });
 }

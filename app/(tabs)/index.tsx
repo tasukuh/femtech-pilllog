@@ -19,6 +19,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { toast } from '@/lib/toast';
 import { ChevronRight } from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
 import { palette, typography, spacing, radius } from '@/design-tokens';
 import { SheetProgressRing } from '@/components/domain/SheetProgressRing';
 import { DoseCard } from '@/components/domain/DoseCard';
@@ -39,10 +40,20 @@ export default function HomeScreen() {
   const { data: sheet, isLoading: sheetLoading, refetch: refetchSheet } = useCurrentSheet(medication?.id);
   const { data: todaysDose, isLoading: doseLoading, refetch: refetchDose } = useTodaysDose(sheet?.id);
 
+  // シートの全記録を取得（進捗計算用）
+  const { data: allRecords = [], isLoading: recordsLoading } = useQuery({
+    queryKey: ['doseRecords', 'all', sheet?.id],
+    queryFn: () => {
+      if (!sheet) return [];
+      return getDoseRecordsBySheet(sheet.id);
+    },
+    enabled: !!sheet,
+  });
+
   // Mutation
   const markDoseTaken = useMarkDoseTaken();
 
-  const isLoading = medicationLoading || sheetLoading || doseLoading;
+  const isLoading = medicationLoading || sheetLoading || doseLoading || recordsLoading;
 
   // Calculate progress
   const [currentDay, setCurrentDay] = React.useState(0);
@@ -50,29 +61,27 @@ export default function HomeScreen() {
   const [daysUntilBreak, setDaysUntilBreak] = React.useState(0);
 
   React.useEffect(() => {
-    if (!sheet || !medication) return;
+    if (!sheet || !medication || !allRecords) return;
 
     // Calculate current day based on taken doses
-    getDoseRecordsBySheet(sheet.id).then((records) => {
-      const takenCount = records.filter((r) => r.status === 'taken').length;
-      const current = takenCount + 1; // Current day is last taken + 1
+    const takenCount = allRecords.filter((r) => r.status === 'taken').length;
+    const current = takenCount + 1; // Current day is last taken + 1
 
-      // Parse sheet pattern
-      const pattern = JSON.parse(medication.sheetPatternJson) as {
-        active: number;
-        placebo?: number;
-        max?: number;
-      };
-      const total = pattern.max || pattern.active + (pattern.placebo ?? 0);
+    // Parse sheet pattern
+    const pattern = JSON.parse(medication.sheetPatternJson) as {
+      active: number;
+      placebo?: number;
+      max?: number;
+    };
+    const total = pattern.max || pattern.active + (pattern.placebo ?? 0);
 
-      // Days until break
-      const untilBreak = Math.max(0, pattern.active - current + 1);
+    // Days until break
+    const untilBreak = Math.max(0, pattern.active - current + 1);
 
-      setCurrentDay(current);
-      setTotalDays(total);
-      setDaysUntilBreak(untilBreak);
-    });
-  }, [sheet, medication]);
+    setCurrentDay(current);
+    setTotalDays(total);
+    setDaysUntilBreak(untilBreak);
+  }, [sheet, medication, allRecords]); // allRecordsを依存配列に追加
 
   // Pull to refresh
   const onRefresh = React.useCallback(async () => {

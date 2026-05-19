@@ -24,11 +24,16 @@ import {
   startOfMonth,
   endOfMonth,
   isBefore,
+  isAfter,
+  startOfDay,
   subDays,
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useMarkDoseTaken, useUndoDoseRecord } from '@/lib/queries/hooks';
+import { toast } from '@/lib/toast';
+import { Button } from '@/components/ui/Button';
 
 import { palette, typography, spacing, radius } from '@/design-tokens';
 import { CalendarGrid } from '@/components/domain/CalendarGrid';
@@ -49,6 +54,10 @@ import type { DoseRecord } from '@/lib/db/schema';
 export default function HistoryScreen() {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+
+  // Mutations
+  const markDoseTaken = useMarkDoseTaken();
+  const undoDoseRecord = useUndoDoseRecord();
 
   // ピル情報を取得
   const { data: medication, isLoading: isMedicationLoading } = useQuery({
@@ -139,6 +148,46 @@ export default function HistoryScreen() {
   const selectedRecord = selectedDate
     ? records.find(r => r.scheduledDate === formatDate(selectedDate))
     : null;
+
+  // 服薬済みにする
+  const handleMarkAsTaken = async () => {
+    if (!selectedRecord) return;
+
+    try {
+      await markDoseTaken.mutateAsync({
+        doseRecordId: selectedRecord.id,
+        takenAt: new Date(),
+        via: 'manual',
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      toast.success('服薬を記録しました');
+      setSelectedDate(null); // モーダルを閉じる
+    } catch (error) {
+      console.error('[History] Failed to mark dose:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      toast.error(error, '記録に失敗しました');
+    }
+  };
+
+  // 記録を取り消す
+  const handleUndoRecord = async () => {
+    if (!selectedRecord) return;
+
+    try {
+      await undoDoseRecord.mutateAsync({
+        doseRecordId: selectedRecord.id,
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      toast.success('記録を取り消しました');
+      setSelectedDate(null); // モーダルを閉じる
+    } catch (error) {
+      console.error('[History] Failed to undo dose:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      toast.error(error, '取り消しに失敗しました');
+    }
+  };
 
   if (isMedicationLoading || isSheetLoading) {
     return (
@@ -327,6 +376,45 @@ export default function HistoryScreen() {
               ) : (
                 <Text style={styles.modalEmpty}>この日の記録はありません</Text>
               )}
+
+              {/* アクションボタン */}
+              {selectedRecord && selectedDate && (() => {
+                const today = startOfDay(new Date());
+                const selected = startOfDay(selectedDate);
+                const isFuture = isAfter(selected, today);
+
+                return (
+                  <View style={styles.modalActions}>
+                    {selectedRecord.status === 'taken' ? (
+                      // 服薬済みの場合は、未来でも取り消し可能
+                      <Button
+                        onPress={handleUndoRecord}
+                        variant="secondary"
+                        fullWidth
+                        loading={undoDoseRecord.isPending}
+                        disabled={undoDoseRecord.isPending}
+                      >
+                        記録を取り消す
+                      </Button>
+                    ) : isFuture ? (
+                      // 未来の日付で未記録の場合は記録不可
+                      <Text style={styles.modalNote}>
+                        未来の日付は記録できません
+                      </Text>
+                    ) : (
+                      // 過去・今日で未記録の場合は記録可能
+                      <Button
+                        onPress={handleMarkAsTaken}
+                        fullWidth
+                        loading={markDoseTaken.isPending}
+                        disabled={markDoseTaken.isPending}
+                      >
+                        服薬済みにする
+                      </Button>
+                    )}
+                  </View>
+                );
+              })()}
             </View>
           </Pressable>
         </Pressable>
@@ -474,5 +562,17 @@ const styles = StyleSheet.create({
     color: palette.muted,
     textAlign: 'center',
     paddingVertical: spacing.xl,
+  },
+  modalActions: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: palette.border,
+  },
+  modalNote: {
+    fontSize: typography.scale.sm,
+    color: palette.muted,
+    textAlign: 'center',
+    paddingVertical: spacing.md,
   },
 });

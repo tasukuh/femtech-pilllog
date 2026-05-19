@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAppStore } from '@/stores/appStore';
 import { initDB } from '@/lib/db';
+import { getOnboardingStatus } from '@/lib/db/queries/appSettings';
 import {
   registerNotificationCategories,
   configureForegroundNotificationBehavior,
@@ -50,6 +51,11 @@ export default function RootLayout() {
         // データベース初期化（完了を待つ）
         await initDB();
         console.log('[App] Database initialized successfully');
+
+        // オンボーディング状態をDBから読み込んでストアに設定
+        const onboardingCompleted = await getOnboardingStatus();
+        console.log('[App] Onboarding status from DB:', onboardingCompleted);
+        useAppStore.getState().setHasCompletedOnboarding(onboardingCompleted);
 
         // 通知システム初期化
         await registerNotificationCategories();
@@ -106,11 +112,19 @@ function RootLayoutNav() {
   useEffect(() => {
     const inOnboarding = segments[0] === '(onboarding)';
 
+    console.log('[RootLayout] Navigation check:', {
+      hasCompletedOnboarding,
+      inOnboarding,
+      segments,
+    });
+
     if (!hasCompletedOnboarding && !inOnboarding) {
       // オンボーディング未完了の場合、welcome画面へ
+      console.log('[RootLayout] Redirecting to onboarding');
       router.replace('/(onboarding)/welcome');
     } else if (hasCompletedOnboarding && inOnboarding) {
       // オンボーディング完了済みの場合、ホーム画面へ
+      console.log('[RootLayout] Redirecting to home');
       router.replace('/(tabs)');
     }
   }, [hasCompletedOnboarding, segments]);
