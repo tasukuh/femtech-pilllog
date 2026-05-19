@@ -4,12 +4,13 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAppStore } from '@/stores/appStore';
 import { initDB } from '@/lib/db';
 import { getOnboardingStatus } from '@/lib/db/queries/appSettings';
+import { queryClient } from '@/lib/queries/client';
 import {
   registerNotificationCategories,
   configureForegroundNotificationBehavior,
@@ -23,16 +24,6 @@ export {
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
-
-// TanStack Query client
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      staleTime: 60 * 1000, // 1分
-    },
-  },
-});
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({

@@ -20,7 +20,7 @@ export async function registerNotificationCategories(): Promise<void> {
     await Notifications.setNotificationCategoryAsync('PILL_REMINDER', [
       {
         identifier: 'TAKE_NOW',
-        buttonTitle: '✓ 服薬済み',
+        buttonTitle: '今飲む',
         options: {
           opensAppToForeground: false,
           isDestructive: false,

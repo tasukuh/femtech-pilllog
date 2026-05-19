@@ -11,9 +11,11 @@ import * as Haptics from 'expo-haptics';
 import { OnboardingContainer } from '@/components/ui/OnboardingContainer';
 import { Button } from '@/components/ui/Button';
 import { palette, typography, spacing, radius } from '@/design-tokens';
-import { requestNotificationPermission } from '@/lib/notifications/setup';
+import { requestNotificationPermission, setupGradualReminders } from '@/lib/notifications/setup';
 import { createMedication } from '@/lib/db/queries/pillMedications';
 import { initializeSheet } from '@/lib/db/queries/sheets';
+import { getTodaysDoseRecord } from '@/lib/db/queries/doseRecords';
+import { updatePrimaryTime } from '@/lib/db/queries/notificationSettings';
 import { setOnboardingStatus } from '@/lib/db/queries/appSettings';
 import { useAppStore } from '@/stores/appStore';
 import { format, subDays } from 'date-fns';
@@ -133,12 +135,42 @@ export default function NotificationPermissionScreen() {
 
       // シートを初期化
       console.log('[Onboarding] Initializing sheet...');
+      let sheet;
       try {
-        await initializeSheet(medicationId, sheetStartDate);
+        sheet = await initializeSheet(medicationId, sheetStartDate);
         console.log('[Onboarding] Initialized sheet starting from:', format(sheetStartDate, 'yyyy-MM-dd'));
       } catch (sheetError) {
         console.error('[Onboarding] Failed to initialize sheet:', sheetError);
         throw new Error(`Sheet initialization failed: ${sheetError}`);
+      }
+
+      // 通知設定を更新
+      console.log('[Onboarding] Updating notification settings...');
+      try {
+        await updatePrimaryTime(scheduledTime);
+        console.log('[Onboarding] ✓ Notification settings updated:', scheduledTime);
+      } catch (settingsError) {
+        console.warn('[Onboarding] Failed to update notification settings:', settingsError);
+      }
+
+      // 今日の通知をスケジュール
+      console.log('[Onboarding] Scheduling today\'s notification...');
+      try {
+        const todayRecord = await getTodaysDoseRecord(sheet.id);
+        if (todayRecord && todayRecord.status !== 'taken') {
+          const [hours, minutes] = scheduledTime.split(':').map(Number);
+          const scheduledDateTime = new Date();
+          scheduledDateTime.setHours(hours, minutes, 0, 0);
+
+          console.log('[Onboarding] Scheduling for dose:', todayRecord.id, 'at', scheduledDateTime.toISOString());
+          await setupGradualReminders(todayRecord.id, scheduledDateTime);
+          console.log('[Onboarding] ✓ Notification scheduled successfully');
+        } else {
+          console.log('[Onboarding] No notification to schedule (already taken or not found)');
+        }
+      } catch (notifError) {
+        console.warn('[Onboarding] Failed to schedule notification:', notifError);
+        // 通知スケジューリングに失敗してもオンボーディングは完了させる
       }
 
       // オンボーディング完了状態をデータベースに保存

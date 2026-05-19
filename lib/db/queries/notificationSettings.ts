@@ -83,6 +83,6 @@ export function parseReminderIntervals(settings: NotificationSettings): number[]
   try {
     return JSON.parse(settings.reminderIntervalsJson);
   } catch {
-    return [5, 30, 60]; // デフォルト
+    return [5, 30]; // デフォルト
   }
 }

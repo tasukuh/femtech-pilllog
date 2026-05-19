@@ -199,7 +199,7 @@ const MIGRATION_0001_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS notification_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     primary_time TEXT NOT NULL DEFAULT '08:00',
-    reminder_intervals_json TEXT NOT NULL DEFAULT '[5,30,60]',
+    reminder_intervals_json TEXT NOT NULL DEFAULT '[5,30]',
     evening_reminder_enabled INTEGER NOT NULL DEFAULT 1,
     evening_reminder_time TEXT NOT NULL DEFAULT '22:00',
     sound_enabled INTEGER NOT NULL DEFAULT 1,

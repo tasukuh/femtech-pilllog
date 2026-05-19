@@ -16,8 +16,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "jp.tasuku.pilllog",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"],
-        "NSUserNotificationsUsageDescription": "服薬時刻にお知らせするために使用します"
+        "UIBackgroundModes": [
+          "remote-notification",
+          "remote-notification"
+        ],
+        "NSUserNotificationsUsageDescription": "服薬時刻にお知らせするために使用します",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -40,6 +44,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "expo-dev-client",
       "expo-router",
       "expo-sqlite",
       "expo-font",
@@ -56,9 +61,11 @@
       "typedRoutes": true
     },
     "extra": {
+      "router": {},
       "eas": {
-        "projectId": "pilllog"
+        "projectId": "23b7ca34-60ee-4ffa-a8fb-6c3ef942e6f9"
       }
-    }
+    },
+    "owner": "tasukuar"
   }
 }

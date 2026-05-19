@@ -83,7 +83,7 @@ export async function schedulePillReminder(
 }
 
 /**
- * Setup gradual reminders (3-stage: 0min, 30min, 60min)
+ * Setup gradual reminders (3-stage: 0min, 5min, 30min)
  *
  * This is the primary scheduling function for pill reminders.
  * If user doesn't respond to first notification, they'll receive follow-ups.
@@ -96,7 +96,7 @@ export async function setupGradualReminders(
   doseRecordId: string,
   scheduledTime: Date
 ): Promise<string[]> {
-  const intervals = [0, 30, 60]; // minutes
+  const intervals = [0, 5, 30]; // minutes
   const notificationIds: string[] = [];
 
   for (const minutes of intervals) {

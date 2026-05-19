@@ -89,7 +89,7 @@ export const sideEffects = sqliteTable('side_effects', {
 export const notificationSettings = sqliteTable('notification_settings', {
   id: integer('id').primaryKey().notNull(), // 常に1
   primaryTime: text('primary_time').notNull().default('08:00'),
-  reminderIntervalsJson: text('reminder_intervals_json').notNull().default('[5,30,60]'),
+  reminderIntervalsJson: text('reminder_intervals_json').notNull().default('[5,30]'),
   eveningReminderEnabled: integer('evening_reminder_enabled', { mode: 'boolean' })
     .notNull().default(true),
   eveningReminderTime: text('evening_reminder_time').notNull().default('22:00'),

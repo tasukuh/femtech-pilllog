@@ -7,6 +7,7 @@
 import * as Notifications from 'expo-notifications';
 import { markDoseAsTaken } from '@/lib/db/queries/doseRecords';
 import { schedulePillReminder, cancelScheduledNotificationsForDose } from './setup';
+import { queryClient } from '@/lib/queries/client';
 
 /**
  * Register notification response handler
@@ -43,6 +44,13 @@ export function registerNotificationHandler(): () => void {
 
           // Cancel any remaining scheduled notifications for this dose
           await cancelScheduledNotificationsForDose(doseRecordId);
+
+          // Invalidate all dose-related queries to update UI
+          await queryClient.invalidateQueries({ queryKey: ['dose'] });
+          await queryClient.invalidateQueries({ queryKey: ['doseRecords'] });
+          await queryClient.invalidateQueries({ queryKey: ['sheet'] });
+          await queryClient.invalidateQueries({ queryKey: ['currentSheet'] });
+          await queryClient.invalidateQueries({ queryKey: ['monthStats'] });
 
           console.log(
             `[Notifications] Dose ${doseRecordId} marked as taken from notification`
