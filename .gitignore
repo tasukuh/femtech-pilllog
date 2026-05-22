@@ -45,14 +45,5 @@ yarn-error.*
 .env.local
 .env.production
 
-cat >> .gitignore << 'EOF'
-
-# Environment
-.env
-.env.local
-.env.production
-
-# Environment
-.env
-.env.local
-.env.production
+# App Store Screenshots
+assets/screenshots/
