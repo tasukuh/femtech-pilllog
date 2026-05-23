@@ -223,6 +223,7 @@ const MIGRATION_0001_STATEMENTS = [
 export async function resetDB() {
   const sqlite = getSqlite();
 
+  // データのみ削除（テーブル構造は保持）
   const tables = [
     'dose_records',
     'side_effects',
@@ -233,8 +234,8 @@ export async function resetDB() {
   ];
 
   for (const table of tables) {
-    sqlite.execSync(`DROP TABLE IF EXISTS ${table}`);
+    sqlite.execSync(`DELETE FROM ${table}`);
   }
 
-  console.log('[DB] Database reset complete');
+  console.log('[DB] All data deleted');
 }
