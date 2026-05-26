@@ -1,28 +1,34 @@
 /**
  * Notification system entry point
  *
- * Usage:
- * 1. On app startup:
- *    - registerNotificationCategories()
- *    - configureForegroundNotificationBehavior()
- *    - registerNotificationHandler()
- *    - requestNotificationPermission()
+ * 起動時の初期化順:
+ *   1. registerNotificationCategories()
+ *   2. configureForegroundNotificationBehavior()
+ *   3. registerNotificationHandler()
+ *   4. requestNotificationPermission()
+ *   5. ensureDailyReminders()  ← 起動時の再スケジュール
  *
- * 2. When scheduling reminders:
- *    - setupGradualReminders(doseRecordId, scheduledTime)
+ * 通知設定が変わったとき:
+ *   - scheduleDailyReminders({ primaryTime, reminderIntervals, eveningEnabled, eveningTime, sound })
  *
- * 3. When dose is taken/skipped:
- *    - cancelScheduledNotificationsForDose(doseRecordId)
+ * 全消去:
+ *   - cancelAllDailyReminders()
  */
 
 export { registerNotificationCategories } from './categories';
 
 export {
   requestNotificationPermission,
+  scheduleDailyReminders,
+  cancelAllDailyReminders,
+  areDailyRemindersScheduled,
+  scheduleOneShotReminder,
+  cancelAllScheduledNotifications,
+  cancelScheduledNotificationsForDose,
+  // 旧 API 互換
   schedulePillReminder,
   setupGradualReminders,
-  cancelScheduledNotificationsForDose,
-  cancelAllScheduledNotifications,
+  NOTIFICATION_IDS,
 } from './setup';
 
 export {

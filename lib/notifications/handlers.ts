@@ -1,82 +1,85 @@
 /**
  * Notification response handlers
  *
- * Handles user actions on notifications (TAKE_NOW, SNOOZE_30)
+ * 設計: CALENDAR repeats:true 設計に対応し、kind ベースで判別する。
+ *   - TAKE_NOW: 今日の dose record を動的に取得して taken にする
+ *   - SNOOZE_30: 30分後の DATE 通知を追加
  */
 
 import * as Notifications from 'expo-notifications';
-import { markDoseAsTaken } from '@/lib/db/queries/doseRecords';
-import { schedulePillReminder, cancelScheduledNotificationsForDose } from './setup';
+import { markDoseAsTaken, getTodaysDoseRecord } from '@/lib/db/queries/doseRecords';
+import { getActiveMedication } from '@/lib/db/queries/pillMedications';
+import { getCurrentSheet } from '@/lib/db/queries/sheets';
+import { scheduleOneShotReminder } from './setup';
 import { queryClient } from '@/lib/queries/client';
 
 /**
- * Register notification response handler
- *
- * This listens for user actions on notifications and handles them accordingly:
- * - TAKE_NOW: Mark dose as taken without opening app
- * - SNOOZE_30: Schedule another reminder 30 minutes later
+ * 今日の dose record を取得（ピル → アクティブシート → 今日のレコード）
+ */
+async function resolveTodaysDoseRecordId(): Promise<string | null> {
+  try {
+    const medication = await getActiveMedication();
+    if (!medication) {
+      console.log('[Notifications] No active medication');
+      return null;
+    }
+    const sheet = await getCurrentSheet(medication.id);
+    if (!sheet) {
+      console.log('[Notifications] No current sheet');
+      return null;
+    }
+    const dose = await getTodaysDoseRecord(sheet.id);
+    return dose?.id ?? null;
+  } catch (error) {
+    console.error('[Notifications] Failed to resolve today\'s dose:', error);
+    return null;
+  }
+}
+
+/**
+ * 通知レスポンスハンドラを登録
  *
  * MUST be called once on app startup (after registerNotificationCategories).
  *
- * @returns Unsubscribe function to remove the listener
+ * @returns Unsubscribe function
  */
 export function registerNotificationHandler(): () => void {
   const subscription = Notifications.addNotificationResponseReceivedListener(
     async (response) => {
       try {
         const { actionIdentifier, notification } = response;
-        const { doseRecordId } = notification.request.content.data as {
-          doseRecordId: string;
+        const data = notification.request.content.data as {
+          kind?: string;
+          doseRecordId?: string;
         };
 
-        if (!doseRecordId) {
-          console.error('[Notifications] No doseRecordId in notification data');
-          return;
-        }
-
         console.log(
-          `[Notifications] Received action: ${actionIdentifier} for dose ${doseRecordId}`
+          `[Notifications] Received action: ${actionIdentifier}, kind: ${data?.kind ?? 'unknown'}`
         );
 
         if (actionIdentifier === 'TAKE_NOW') {
-          // Mark dose as taken via notification
+          // 旧 DATE 通知由来なら data.doseRecordId、CALENDAR 由来ならその場で解決
+          const doseRecordId = data?.doseRecordId ?? (await resolveTodaysDoseRecordId());
+          if (!doseRecordId) {
+            console.warn('[Notifications] TAKE_NOW: no dose record found for today');
+            return;
+          }
+
           await markDoseAsTaken(doseRecordId, new Date(), 'notification');
 
-          // Cancel any remaining scheduled notifications for this dose
-          await cancelScheduledNotificationsForDose(doseRecordId);
-
-          // Invalidate all dose-related queries to update UI
           await queryClient.invalidateQueries({ queryKey: ['dose'] });
           await queryClient.invalidateQueries({ queryKey: ['doseRecords'] });
           await queryClient.invalidateQueries({ queryKey: ['sheet'] });
           await queryClient.invalidateQueries({ queryKey: ['currentSheet'] });
           await queryClient.invalidateQueries({ queryKey: ['monthStats'] });
 
-          console.log(
-            `[Notifications] Dose ${doseRecordId} marked as taken from notification`
-          );
-
-          // TODO: Show success toast (when app is in foreground)
-          // showToast('success', '服薬を記録しました');
+          console.log(`[Notifications] Dose ${doseRecordId} marked as taken from notification`);
         } else if (actionIdentifier === 'SNOOZE_30') {
-          // Schedule reminder 30 minutes from now
           const snoozeTime = new Date(Date.now() + 30 * 60 * 1000);
-          await schedulePillReminder(doseRecordId, snoozeTime);
-
-          console.log(
-            `[Notifications] Snoozed dose ${doseRecordId} until ${snoozeTime.toISOString()}`
-          );
-
-          // TODO: Show snooze confirmation (when app is in foreground)
-          // showToast('info', '30分後に再通知します');
-        } else if (
-          actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER
-        ) {
-          // User tapped notification body (not an action button)
-          // This opens the app - no special handling needed
-          console.log(
-            `[Notifications] User opened app from notification for dose ${doseRecordId}`
-          );
+          await scheduleOneShotReminder(snoozeTime);
+          console.log(`[Notifications] Snoozed until ${snoozeTime.toISOString()}`);
+        } else if (actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+          console.log('[Notifications] User opened app from notification');
         }
       } catch (error) {
         console.error('[Notifications] Error handling notification response:', error);
@@ -86,7 +89,6 @@ export function registerNotificationHandler(): () => void {
 
   console.log('[Notifications] Handler registered');
 
-  // Return unsubscribe function
   return () => {
     subscription.remove();
     console.log('[Notifications] Handler unregistered');
@@ -94,22 +96,47 @@ export function registerNotificationHandler(): () => void {
 }
 
 /**
- * Configure notification behavior when app is in foreground
+ * フォアグラウンド時の通知表示挙動を設定
  *
- * By default, notifications don't show when app is open.
- * This configures them to show with sound and badge.
- *
- * Call this once on app startup.
+ * 加えて、kind に応じて「すでに服薬済みなら通知を抑制」する。
+ *  - pill-reminder / pill-evening: 今日のレコードが taken なら表示しない
+ *  - pill-primary: 必ず表示
  */
 export function configureForegroundNotificationBehavior(): void {
   Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
+    handleNotification: async (notification) => {
+      const data = notification.request.content.data as { kind?: string };
+
+      // 通知抑制が必要な kind
+      if (data?.kind === 'pill-reminder' || data?.kind === 'pill-evening') {
+        try {
+          const medication = await getActiveMedication();
+          const sheet = medication ? await getCurrentSheet(medication.id) : null;
+          const dose = sheet ? await getTodaysDoseRecord(sheet.id) : null;
+
+          if (dose?.status === 'taken') {
+            console.log(`[Notifications] Suppressed ${data.kind} — already taken`);
+            return {
+              shouldShowAlert: false,
+              shouldPlaySound: false,
+              shouldSetBadge: false,
+              shouldShowBanner: false,
+              shouldShowList: false,
+            };
+          }
+        } catch (error) {
+          console.error('[Notifications] Suppression check failed:', error);
+        }
+      }
+
+      return {
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      };
+    },
   });
 
   console.log('[Notifications] Foreground behavior configured');

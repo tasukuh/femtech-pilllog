@@ -11,11 +11,10 @@ import * as Haptics from 'expo-haptics';
 import { OnboardingContainer } from '@/components/ui/OnboardingContainer';
 import { Button } from '@/components/ui/Button';
 import { palette, typography, spacing, radius } from '@/design-tokens';
-import { requestNotificationPermission, setupGradualReminders } from '@/lib/notifications/setup';
+import { requestNotificationPermission, scheduleDailyReminders } from '@/lib/notifications/setup';
 import { createMedication } from '@/lib/db/queries/pillMedications';
 import { initializeSheet } from '@/lib/db/queries/sheets';
-import { getTodaysDoseRecord } from '@/lib/db/queries/doseRecords';
-import { updatePrimaryTime } from '@/lib/db/queries/notificationSettings';
+import { updatePrimaryTime, getNotificationSettings, parseReminderIntervals } from '@/lib/db/queries/notificationSettings';
 import { setOnboardingStatus } from '@/lib/db/queries/appSettings';
 import { useAppStore } from '@/stores/appStore';
 import { format, subDays } from 'date-fns';
@@ -153,23 +152,20 @@ export default function NotificationPermissionScreen() {
         console.warn('[Onboarding] Failed to update notification settings:', settingsError);
       }
 
-      // 今日の通知をスケジュール
-      console.log('[Onboarding] Scheduling today\'s notification...');
+      // 毎日繰り返す通知をスケジュール（メイン + 段階リマインダー + 22時バックアップ）
+      console.log('[Onboarding] Scheduling daily reminders...');
       try {
-        const todayRecord = await getTodaysDoseRecord(sheet.id);
-        if (todayRecord && todayRecord.status !== 'taken') {
-          const [hours, minutes] = scheduledTime.split(':').map(Number);
-          const scheduledDateTime = new Date();
-          scheduledDateTime.setHours(hours, minutes, 0, 0);
-
-          console.log('[Onboarding] Scheduling for dose:', todayRecord.id, 'at', scheduledDateTime.toISOString());
-          await setupGradualReminders(todayRecord.id, scheduledDateTime);
-          console.log('[Onboarding] ✓ Notification scheduled successfully');
-        } else {
-          console.log('[Onboarding] No notification to schedule (already taken or not found)');
-        }
+        const settings = await getNotificationSettings();
+        await scheduleDailyReminders({
+          primaryTime: scheduledTime,
+          reminderIntervals: parseReminderIntervals(settings),
+          eveningEnabled: settings.eveningReminderEnabled,
+          eveningTime: settings.eveningReminderTime,
+          sound: settings.soundEnabled,
+        });
+        console.log('[Onboarding] ✓ Daily reminders scheduled');
       } catch (notifError) {
-        console.warn('[Onboarding] Failed to schedule notification:', notifError);
+        console.warn('[Onboarding] Failed to schedule daily reminders:', notifError);
         // 通知スケジューリングに失敗してもオンボーディングは完了させる
       }
 

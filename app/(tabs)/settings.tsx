@@ -37,6 +37,10 @@ import {
 import { setOnboardingStatus } from '@/lib/db/queries/appSettings';
 import { clearFutureDoseRecords } from '@/lib/db/queries/doseRecords';
 import { resetDB } from '@/lib/db/index';
+import {
+  scheduleDailyReminders,
+  cancelAllDailyReminders,
+} from '@/lib/notifications/setup';
 import { formatTime, parseTime } from '@/lib/utils/date';
 import { useAppStore } from '@/stores/appStore';
 import { useRouter } from 'expo-router';
@@ -71,10 +75,27 @@ export default function SettingsScreen() {
     queryFn: getNotificationSettings,
   });
 
+  // 通知設定が変わったら DB の最新値で再スケジュール
+  const rescheduleFromDb = async () => {
+    try {
+      const latest = await getNotificationSettings();
+      await scheduleDailyReminders({
+        primaryTime: latest.primaryTime,
+        reminderIntervals: parseReminderIntervals(latest),
+        eveningEnabled: latest.eveningReminderEnabled,
+        eveningTime: latest.eveningReminderTime,
+        sound: latest.soundEnabled,
+      });
+    } catch (error) {
+      console.error('[Settings] Failed to reschedule reminders:', error);
+    }
+  };
+
   // 服薬時刻更新
   const updateTimeMutation = useMutation({
     mutationFn: (time: string) => updatePrimaryTime(time),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await rescheduleFromDb();
       queryClient.invalidateQueries({ queryKey: ['notificationSettings'] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('保存しました', '服薬時刻を更新しました');
@@ -88,7 +109,8 @@ export default function SettingsScreen() {
   // 夜の確認通知トグル
   const toggleEveningMutation = useMutation({
     mutationFn: (enabled: boolean) => toggleEveningReminder(enabled),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await rescheduleFromDb();
       queryClient.invalidateQueries({ queryKey: ['notificationSettings'] });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     },
@@ -97,7 +119,8 @@ export default function SettingsScreen() {
   // 通知音トグル
   const toggleSoundMutation = useMutation({
     mutationFn: (enabled: boolean) => toggleSound(enabled),
-    onSuccess: () => {
+    onSuccess: async () => {
+      await rescheduleFromDb();
       queryClient.invalidateQueries({ queryKey: ['notificationSettings'] });
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     },
@@ -154,6 +177,9 @@ export default function SettingsScreen() {
                   onPress: async () => {
                     try {
                       console.log('[Settings] Deleting all data...');
+
+                      // 通知も全キャンセル（毎日リマインダーが残らないように）
+                      await cancelAllDailyReminders();
 
                       // データベースをリセット
                       await resetDB();

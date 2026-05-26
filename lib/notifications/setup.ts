@@ -1,19 +1,39 @@
 /**
  * Notification permission and scheduling
  *
- * Core functions:
- * - Request iOS notification permission
- * - Schedule single/gradual reminders
- * - Cancel scheduled notifications
+ * 設計: CALENDAR トリガー + repeats:true で「毎日繰り返す」通知を 4 つセット
+ *   - pill-primary       : 服薬時刻ちょうど
+ *   - pill-reminder-1    : +5分
+ *   - pill-reminder-2    : +30分
+ *   - pill-evening       : 22:00（記録がない日のバックアップ）
+ *
+ * 各通知は固定 identifier を持ち、再スケジュール時は前回分をキャンセル→再生成する。
+ *
+ * doseRecordId は CALENDAR repeats:true では事前に決められないため通知 data には含めない。
+ * ハンドラ側で「今日の dose record」を動的に取得する。
  */
 
 import * as Notifications from 'expo-notifications';
 
 /**
- * Request notification permission from iOS
+ * 通知識別子（固定）
  *
- * MUST be called before scheduling any notifications.
- * Returns true if permission granted, false otherwise.
+ * 同じ identifier で scheduleNotificationAsync を呼ぶと既存が置き換わる。
+ */
+export const NOTIFICATION_IDS = {
+  PILL_PRIMARY: 'pill-primary',
+  PILL_REMINDER_1: 'pill-reminder-1',
+  PILL_REMINDER_2: 'pill-reminder-2',
+  PILL_EVENING: 'pill-evening',
+} as const;
+
+/**
+ * 通知 data の kind フィールド（ハンドラ側で判別）
+ */
+export type NotificationKind = 'pill-primary' | 'pill-reminder' | 'pill-evening';
+
+/**
+ * Request notification permission from iOS
  */
 export async function requestNotificationPermission(): Promise<boolean> {
   try {
@@ -46,127 +66,207 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * Schedule a single pill reminder notification
- *
- * @param doseRecordId - Dose record ID to include in notification data
- * @param scheduledDateTime - When to trigger the notification
- * @returns Notification identifier (for cancellation)
+ * "HH:MM" 形式の文字列を {hour, minute} にパース
  */
-export async function schedulePillReminder(
-  doseRecordId: string,
-  scheduledDateTime: Date
-): Promise<string> {
-  try {
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'おはようございます ☀️',
-        body: '今日のピルを忘れずに',
-        data: { doseRecordId },
-        categoryIdentifier: 'PILL_REMINDER',
-        sound: true,
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: scheduledDateTime,
-      },
-    });
-
-    console.log(
-      `[Notifications] Scheduled reminder ${notificationId} for dose ${doseRecordId} at ${scheduledDateTime.toISOString()}`
-    );
-
-    return notificationId;
-  } catch (error) {
-    console.error('[Notifications] Failed to schedule reminder:', error);
-    throw error;
-  }
+function parseHourMinute(time: string): { hour: number; minute: number } {
+  const [hStr, mStr] = time.split(':');
+  return { hour: parseInt(hStr, 10), minute: parseInt(mStr, 10) };
 }
 
 /**
- * Setup gradual reminders (3-stage: 0min, 5min, 30min)
- *
- * This is the primary scheduling function for pill reminders.
- * If user doesn't respond to first notification, they'll receive follow-ups.
- *
- * @param doseRecordId - Dose record ID
- * @param scheduledTime - Base scheduled time (first notification)
- * @returns Array of notification identifiers
+ * 時/分のオフセット計算（時の繰り上がり対応）
  */
-export async function setupGradualReminders(
-  doseRecordId: string,
-  scheduledTime: Date
-): Promise<string[]> {
-  const intervals = [0, 5, 30]; // minutes
-  const notificationIds: string[] = [];
+function addMinutes(hour: number, minute: number, offsetMin: number): {
+  hour: number;
+  minute: number;
+} {
+  const total = hour * 60 + minute + offsetMin;
+  const normalized = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  return {
+    hour: Math.floor(normalized / 60),
+    minute: normalized % 60,
+  };
+}
 
-  for (const minutes of intervals) {
-    const triggerTime = new Date(scheduledTime.getTime() + minutes * 60000);
+/**
+ * 単一の毎日繰り返し通知をスケジュール
+ */
+async function scheduleDailyCalendar(params: {
+  identifier: string;
+  title: string;
+  body: string;
+  hour: number;
+  minute: number;
+  kind: NotificationKind;
+  sound: boolean;
+  category?: string;
+}): Promise<void> {
+  await Notifications.scheduleNotificationAsync({
+    identifier: params.identifier,
+    content: {
+      title: params.title,
+      body: params.body,
+      data: { kind: params.kind },
+      categoryIdentifier: params.category,
+      sound: params.sound,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+      hour: params.hour,
+      minute: params.minute,
+      repeats: true,
+    },
+  });
+}
 
-    // Skip if trigger time is in the past
-    if (triggerTime.getTime() < Date.now()) {
-      console.log(
-        `[Notifications] Skipping past trigger time: ${triggerTime.toISOString()}`
-      );
-      continue;
-    }
+/**
+ * 毎日繰り返す通知をすべてセットアップ（メインAPI）
+ *
+ * 服薬時刻、5分後、30分後、夜22時の4種類を毎日繰り返しでスケジュール。
+ * 既存の同名通知は自動的に置き換わる。
+ *
+ * @param primaryTime - 服薬時刻 "HH:MM"
+ * @param reminderIntervals - 段階的リマインダーの分数 [5, 30] など（先頭2件まで使用）
+ * @param eveningEnabled - 夜の確認通知の有効/無効
+ * @param eveningTime - 夜の確認通知の時刻 "HH:MM"（デフォルト "22:00"）
+ * @param sound - 通知音 ON/OFF
+ */
+export async function scheduleDailyReminders(params: {
+  primaryTime: string;
+  reminderIntervals?: number[];
+  eveningEnabled?: boolean;
+  eveningTime?: string;
+  sound?: boolean;
+}): Promise<void> {
+  const {
+    primaryTime,
+    reminderIntervals = [5, 30],
+    eveningEnabled = true,
+    eveningTime = '22:00',
+    sound = true,
+  } = params;
 
-    const id = await schedulePillReminder(doseRecordId, triggerTime);
-    notificationIds.push(id);
+  // 古い同名通知を必ず消してから再スケジュール（識別子上書きの挙動差を回避）
+  for (const id of Object.values(NOTIFICATION_IDS)) {
+    await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+  }
+
+  const { hour, minute } = parseHourMinute(primaryTime);
+
+  // 1. 服薬時刻ちょうど
+  await scheduleDailyCalendar({
+    identifier: NOTIFICATION_IDS.PILL_PRIMARY,
+    title: 'おはようございます ☀️',
+    body: '今日のピルを忘れずに',
+    hour,
+    minute,
+    kind: 'pill-primary',
+    sound,
+    category: 'PILL_REMINDER',
+  });
+
+  // 2. +N分後（最大2件）
+  const intervalIds = [
+    NOTIFICATION_IDS.PILL_REMINDER_1,
+    NOTIFICATION_IDS.PILL_REMINDER_2,
+  ];
+  for (let i = 0; i < Math.min(reminderIntervals.length, 2); i++) {
+    const offset = reminderIntervals[i];
+    const t = addMinutes(hour, minute, offset);
+    await scheduleDailyCalendar({
+      identifier: intervalIds[i],
+      title: 'ピルの時間です ⏰',
+      body: 'まだ記録されていません。タップで確認',
+      hour: t.hour,
+      minute: t.minute,
+      kind: 'pill-reminder',
+      sound,
+      category: 'PILL_REMINDER',
+    });
+  }
+  // 使わない interval ID 分の旧通知を掃除
+  for (let i = reminderIntervals.length; i < 2; i++) {
+    await Notifications.cancelScheduledNotificationAsync(intervalIds[i]).catch(() => {});
+  }
+
+  // 3. 22:00 夜の確認通知
+  if (eveningEnabled) {
+    const ev = parseHourMinute(eveningTime);
+    await scheduleDailyCalendar({
+      identifier: NOTIFICATION_IDS.PILL_EVENING,
+      title: '今日のピル、記録しましたか？🌙',
+      body: 'まだの方はタップして記録',
+      hour: ev.hour,
+      minute: ev.minute,
+      kind: 'pill-evening',
+      sound,
+      category: 'PILL_REMINDER',
+    });
+  } else {
+    await Notifications.cancelScheduledNotificationAsync(
+      NOTIFICATION_IDS.PILL_EVENING
+    ).catch(() => {});
   }
 
   console.log(
-    `[Notifications] Setup ${notificationIds.length} gradual reminders for dose ${doseRecordId}`
+    `[Notifications] Daily reminders scheduled: primary=${primaryTime}, intervals=${reminderIntervals}, evening=${eveningEnabled ? eveningTime : 'off'}, sound=${sound}`
+  );
+}
+
+/**
+ * すべての毎日リマインダーをキャンセル
+ */
+export async function cancelAllDailyReminders(): Promise<void> {
+  for (const id of Object.values(NOTIFICATION_IDS)) {
+    await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+  }
+  console.log('[Notifications] All daily reminders cancelled');
+}
+
+/**
+ * 毎日リマインダーが現在スケジュール済みかチェック
+ *
+ * アプリ起動時に「すべて揃っているか」を確認するために使う。
+ *
+ * @returns 必要な通知がすべて揃っていれば true
+ */
+export async function areDailyRemindersScheduled(): Promise<boolean> {
+  const all = await Notifications.getAllScheduledNotificationsAsync();
+  const ids = new Set(all.map((n) => n.identifier));
+  return ids.has(NOTIFICATION_IDS.PILL_PRIMARY);
+}
+
+/**
+ * 単発の DATE 通知（スヌーズ等）
+ *
+ * @param scheduledDateTime - 発火する日時
+ */
+export async function scheduleOneShotReminder(
+  scheduledDateTime: Date
+): Promise<string> {
+  const notificationId = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'ピルの時間です ⏰',
+      body: 'タップで確認',
+      data: { kind: 'pill-reminder' satisfies NotificationKind },
+      categoryIdentifier: 'PILL_REMINDER',
+      sound: true,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: scheduledDateTime,
+    },
+  });
+
+  console.log(
+    `[Notifications] One-shot reminder ${notificationId} at ${scheduledDateTime.toISOString()}`
   );
 
-  return notificationIds;
+  return notificationId;
 }
 
 /**
- * Cancel all scheduled notifications for a specific dose
- *
- * Should be called when:
- * - User marks dose as taken
- * - User skips the dose
- * - Dose schedule is changed
- *
- * @param doseRecordId - Dose record ID
- */
-export async function cancelScheduledNotificationsForDose(
-  doseRecordId: string
-): Promise<void> {
-  try {
-    // Get all scheduled notifications
-    const scheduledNotifications =
-      await Notifications.getAllScheduledNotificationsAsync();
-
-    // Filter notifications for this dose record
-    const notificationsToCancel = scheduledNotifications.filter(
-      (notification) => {
-        const data = notification.content.data as { doseRecordId?: string };
-        return data.doseRecordId === doseRecordId;
-      }
-    );
-
-    // Cancel each matching notification
-    for (const notification of notificationsToCancel) {
-      await Notifications.cancelScheduledNotificationAsync(
-        notification.identifier
-      );
-    }
-
-    console.log(
-      `[Notifications] Cancelled ${notificationsToCancel.length} notifications for dose ${doseRecordId}`
-    );
-  } catch (error) {
-    console.error('[Notifications] Failed to cancel notifications:', error);
-    throw error;
-  }
-}
-
-/**
- * Cancel all scheduled notifications
- *
- * Use with caution - this removes ALL pending notifications for the app.
+ * すべての予約通知をキャンセル（注意：他の用途の通知も消える）
  */
 export async function cancelAllScheduledNotifications(): Promise<void> {
   try {
@@ -177,3 +277,47 @@ export async function cancelAllScheduledNotifications(): Promise<void> {
     throw error;
   }
 }
+
+// ============================================================
+// 互換維持: 旧 API（doseRecordId ベース）
+// ============================================================
+// markDoseAsTaken から呼ばれているため残しているが、CALENDAR 設計では
+// 個別 dose 単位のキャンセルは不要（毎日固定 ID で繰り返すため）。
+// 念のため doseRecordId を data に持つ DATE 通知のみを掃除する。
+
+export async function cancelScheduledNotificationsForDose(
+  doseRecordId: string
+): Promise<void> {
+  try {
+    const all = await Notifications.getAllScheduledNotificationsAsync();
+    const toCancel = all.filter((n) => {
+      const data = n.content.data as { doseRecordId?: string };
+      return data?.doseRecordId === doseRecordId;
+    });
+
+    for (const n of toCancel) {
+      await Notifications.cancelScheduledNotificationAsync(n.identifier);
+    }
+
+    if (toCancel.length > 0) {
+      console.log(
+        `[Notifications] Cancelled ${toCancel.length} dose-specific notifications for ${doseRecordId}`
+      );
+    }
+  } catch (error) {
+    console.error('[Notifications] Failed to cancel dose notifications:', error);
+  }
+}
+
+// 旧名互換（誰からも呼ばれていないが import 切替を一括にするため残す）
+export const schedulePillReminder = scheduleOneShotReminder;
+export const setupGradualReminders = async (
+  _doseRecordId: string,
+  scheduledTime: Date
+): Promise<string[]> => {
+  // 旧API: 互換用。新コードからは scheduleDailyReminders を使うこと。
+  const hh = scheduledTime.getHours().toString().padStart(2, '0');
+  const mm = scheduledTime.getMinutes().toString().padStart(2, '0');
+  await scheduleDailyReminders({ primaryTime: `${hh}:${mm}` });
+  return [];
+};

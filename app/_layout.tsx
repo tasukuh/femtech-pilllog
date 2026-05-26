@@ -15,7 +15,14 @@ import {
   registerNotificationCategories,
   configureForegroundNotificationBehavior,
   registerNotificationHandler,
+  areDailyRemindersScheduled,
+  scheduleDailyReminders,
 } from '@/lib/notifications';
+import {
+  getNotificationSettings,
+  parseReminderIntervals,
+} from '@/lib/db/queries/notificationSettings';
+import { getActiveMedication } from '@/lib/db/queries/pillMedications';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -52,6 +59,32 @@ export default function RootLayout() {
         await registerNotificationCategories();
         configureForegroundNotificationBehavior();
         unsubscribe = registerNotificationHandler();
+
+        // オンボーディング完了済みなら、毎日リマインダーが残っているか確認・再構築
+        // （iOS再起動・OSアップデート等で消えるケースの保険）
+        if (onboardingCompleted) {
+          try {
+            const medication = await getActiveMedication();
+            if (medication) {
+              const scheduled = await areDailyRemindersScheduled();
+              if (!scheduled) {
+                console.log('[App] Daily reminders missing — rescheduling');
+                const settings = await getNotificationSettings();
+                await scheduleDailyReminders({
+                  primaryTime: settings.primaryTime,
+                  reminderIntervals: parseReminderIntervals(settings),
+                  eveningEnabled: settings.eveningReminderEnabled,
+                  eveningTime: settings.eveningReminderTime,
+                  sound: settings.soundEnabled,
+                });
+              } else {
+                console.log('[App] Daily reminders already scheduled');
+              }
+            }
+          } catch (rescheduleError) {
+            console.warn('[App] Failed to ensure daily reminders:', rescheduleError);
+          }
+        }
 
         console.log('[App] Notification system initialized');
 
