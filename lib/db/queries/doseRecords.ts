@@ -8,7 +8,7 @@ import { eq, and, gte, lte, desc } from 'drizzle-orm';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { getDb } from '../index';
 import { doseRecords, type DoseRecord, type NewDoseRecord } from '../schema';
-import { cancelScheduledNotificationsForDose } from '../notifications';
+import { cancelFollowUpReminders } from '../../notifications';
 
 /**
  * 今日の服薬記録を取得
@@ -140,8 +140,7 @@ export async function markDoseAsTaken(
 
   console.log(`[DoseRecords] Marked ${doseRecordId} as taken via ${via}`);
 
-  // Cancel any remaining scheduled notifications for this dose
-  await cancelScheduledNotificationsForDose(doseRecordId);
+  await cancelFollowUpReminders();
 
   // TODO: PostHogイベント送信（内容は記録しない）
   // analytics.capture('dose_recorded', { via });
@@ -180,8 +179,7 @@ export async function markDoseAsSkipped(doseRecordId: string): Promise<void> {
 
   console.log(`[DoseRecords] Marked ${doseRecordId} as skipped`);
 
-  // Cancel any remaining scheduled notifications for this dose
-  await cancelScheduledNotificationsForDose(doseRecordId);
+  await cancelFollowUpReminders();
 }
 
 /**

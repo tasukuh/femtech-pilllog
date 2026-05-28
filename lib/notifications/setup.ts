@@ -227,13 +227,30 @@ export async function cancelAllDailyReminders(): Promise<void> {
  * 毎日リマインダーが現在スケジュール済みかチェック
  *
  * アプリ起動時に「すべて揃っているか」を確認するために使う。
+ * フォローアップ通知（PILL_REMINDER_1）も確認する。
+ * 服薬記録後にフォローアップがキャンセルされた場合は false になり、
+ * 次回起動時に再スケジュールされる。
  *
  * @returns 必要な通知がすべて揃っていれば true
  */
 export async function areDailyRemindersScheduled(): Promise<boolean> {
   const all = await Notifications.getAllScheduledNotificationsAsync();
   const ids = new Set(all.map((n) => n.identifier));
-  return ids.has(NOTIFICATION_IDS.PILL_PRIMARY);
+  return ids.has(NOTIFICATION_IDS.PILL_PRIMARY) && ids.has(NOTIFICATION_IDS.PILL_REMINDER_1);
+}
+
+/**
+ * フォローアップリマインダーをキャンセル（服薬記録後に呼ぶ）
+ *
+ * PILL_REMINDER_1, PILL_REMINDER_2, PILL_EVENING をキャンセルする。
+ * PILL_PRIMARY はキャンセルしない（翌日の主通知は維持）。
+ * 次回アプリ起動時に areDailyRemindersScheduled() が false を返し、全通知が再スケジュールされる。
+ */
+export async function cancelFollowUpReminders(): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(NOTIFICATION_IDS.PILL_REMINDER_1).catch(() => {});
+  await Notifications.cancelScheduledNotificationAsync(NOTIFICATION_IDS.PILL_REMINDER_2).catch(() => {});
+  await Notifications.cancelScheduledNotificationAsync(NOTIFICATION_IDS.PILL_EVENING).catch(() => {});
+  console.log('[Notifications] Follow-up reminders cancelled after dose taken');
 }
 
 /**

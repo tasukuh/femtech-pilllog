@@ -22,6 +22,7 @@ export {
   scheduleDailyReminders,
   cancelAllDailyReminders,
   areDailyRemindersScheduled,
+  cancelFollowUpReminders,
   scheduleOneShotReminder,
   cancelAllScheduledNotifications,
   cancelScheduledNotificationsForDose,

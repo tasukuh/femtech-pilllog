@@ -65,7 +65,7 @@ export default function HomeScreen() {
 
     // Calculate current day based on taken doses
     const takenCount = allRecords.filter((r) => r.status === 'taken').length;
-    const current = takenCount + 1; // Current day is last taken + 1
+    const current = takenCount; // 服薬済み日数（リングの進捗）
 
     // Parse sheet pattern
     const pattern = JSON.parse(medication.sheetPatternJson) as {
@@ -76,7 +76,7 @@ export default function HomeScreen() {
     const total = pattern.max || pattern.active + (pattern.placebo ?? 0);
 
     // Days until break
-    const untilBreak = Math.max(0, pattern.active - current + 1);
+    const untilBreak = Math.max(0, pattern.active - current);
 
     setCurrentDay(current);
     setTotalDays(total);
