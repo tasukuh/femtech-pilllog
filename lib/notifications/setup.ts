@@ -240,17 +240,17 @@ export async function areDailyRemindersScheduled(): Promise<boolean> {
 }
 
 /**
- * フォローアップリマインダーをキャンセル（服薬記録後に呼ぶ）
+ * 服薬記録後にすべての本日分通知をキャンセル
  *
- * PILL_REMINDER_1, PILL_REMINDER_2, PILL_EVENING をキャンセルする。
- * PILL_PRIMARY はキャンセルしない（翌日の主通知は維持）。
- * 次回アプリ起動時に areDailyRemindersScheduled() が false を返し、全通知が再スケジュールされる。
+ * PILL_PRIMARY を含む全 ID をキャンセルする。
+ * PILL_PRIMARY を残すと、服薬済みでも設定時刻に主通知が来てしまう。
+ * 次回アプリ起動時に areDailyRemindersScheduled() が false を返し、全通知が翌日分として再スケジュールされる。
  */
 export async function cancelFollowUpReminders(): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(NOTIFICATION_IDS.PILL_REMINDER_1).catch(() => {});
-  await Notifications.cancelScheduledNotificationAsync(NOTIFICATION_IDS.PILL_REMINDER_2).catch(() => {});
-  await Notifications.cancelScheduledNotificationAsync(NOTIFICATION_IDS.PILL_EVENING).catch(() => {});
-  console.log('[Notifications] Follow-up reminders cancelled after dose taken');
+  for (const id of Object.values(NOTIFICATION_IDS)) {
+    await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+  }
+  console.log('[Notifications] All reminders cancelled after dose taken');
 }
 
 /**

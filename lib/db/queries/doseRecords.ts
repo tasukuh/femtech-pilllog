@@ -239,10 +239,10 @@ export async function calculateAdherenceRate(
 ): Promise<{ total: number; taken: number; rate: number }> {
   const records = await getDoseRecordsInRange(sheetId, startDate, endDate);
 
-  // 未来の予定と偽薬を除外
-  const now = new Date();
+  // 未来の予定と偽薬を除外（scheduledDate は "yyyy-MM-dd" 文字列なので文字列比較でタイムゾーン問題を回避）
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
   const relevant = records.filter(
-    r => new Date(r.scheduledDate) <= now && !r.isPlacebo
+    r => r.scheduledDate <= todayStr && !r.isPlacebo
   );
 
   const total = relevant.length;
