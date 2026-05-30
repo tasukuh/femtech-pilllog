@@ -15,7 +15,6 @@ import {
   registerNotificationCategories,
   configureForegroundNotificationBehavior,
   registerNotificationHandler,
-  areDailyRemindersScheduled,
   scheduleDailyReminders,
 } from '@/lib/notifications';
 import {
@@ -23,6 +22,8 @@ import {
   parseReminderIntervals,
 } from '@/lib/db/queries/notificationSettings';
 import { getActiveMedication } from '@/lib/db/queries/pillMedications';
+import { getCurrentSheet } from '@/lib/db/queries/sheets';
+import { getTodaysDoseRecord } from '@/lib/db/queries/doseRecords';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -60,26 +61,27 @@ export default function RootLayout() {
         configureForegroundNotificationBehavior();
         unsubscribe = registerNotificationHandler();
 
-        // オンボーディング完了済みなら、毎日リマインダーが残っているか確認・再構築
-        // （iOS再起動・OSアップデート等で消えるケースの保険）
+        // オンボーディング完了済みなら、起動のたびにローリングウィンドウを再構築する。
+        // 日付別 DATE 通知は毎日 1 日分ずつ消費されるため、起動時の補充が必須。
+        // 今日分を既に服薬済みなら skipToday=true で今日の通知は再スケジュールしない。
         if (onboardingCompleted) {
           try {
             const medication = await getActiveMedication();
             if (medication) {
-              const scheduled = await areDailyRemindersScheduled();
-              if (!scheduled) {
-                console.log('[App] Daily reminders missing — rescheduling');
-                const settings = await getNotificationSettings();
-                await scheduleDailyReminders({
-                  primaryTime: settings.primaryTime,
-                  reminderIntervals: parseReminderIntervals(settings),
-                  eveningEnabled: settings.eveningReminderEnabled,
-                  eveningTime: settings.eveningReminderTime,
-                  sound: settings.soundEnabled,
-                });
-              } else {
-                console.log('[App] Daily reminders already scheduled');
-              }
+              const settings = await getNotificationSettings();
+              const sheet = await getCurrentSheet(medication.id);
+              const todaysDose = sheet ? await getTodaysDoseRecord(sheet.id) : null;
+              const skipToday = todaysDose?.status === 'taken';
+
+              console.log(`[App] Rebuilding reminder window (skipToday=${skipToday})`);
+              await scheduleDailyReminders({
+                primaryTime: settings.primaryTime,
+                reminderIntervals: parseReminderIntervals(settings),
+                eveningEnabled: settings.eveningReminderEnabled,
+                eveningTime: settings.eveningReminderTime,
+                sound: settings.soundEnabled,
+                skipToday,
+              });
             }
           } catch (rescheduleError) {
             console.warn('[App] Failed to ensure daily reminders:', rescheduleError);

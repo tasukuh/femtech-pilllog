@@ -75,8 +75,8 @@ export function registerNotificationHandler(): () => void {
 
           console.log(`[Notifications] Dose ${doseRecordId} marked as taken from notification`);
         } else if (actionIdentifier === 'SNOOZE_30') {
-          // 毎日繰り返し通知を全てキャンセル（スヌーズ後も +5分・+30分が届くのを防ぐ）
-          // 次回アプリ起動時に areDailyRemindersScheduled() が false を返し翌日分が再スケジュールされる
+          // 今日分の通知（+5分・+30分・夜）をキャンセルしてから 30 分後の単発通知を登録。
+          // 未来日の通知は残るので翌日以降は通常どおり届く。
           await cancelFollowUpReminders();
           const snoozeTime = new Date(Date.now() + 30 * 60 * 1000);
           await scheduleOneShotReminder(snoozeTime);
@@ -110,8 +110,12 @@ export function configureForegroundNotificationBehavior(): void {
     handleNotification: async (notification) => {
       const data = notification.request.content.data as { kind?: string };
 
-      // 通知抑制が必要な kind
-      if (data?.kind === 'pill-reminder' || data?.kind === 'pill-evening') {
+      // 通知抑制が必要な kind（服薬済みなら主通知も含めて抑制）
+      if (
+        data?.kind === 'pill-primary' ||
+        data?.kind === 'pill-reminder' ||
+        data?.kind === 'pill-evening'
+      ) {
         try {
           const medication = await getActiveMedication();
           const sheet = medication ? await getCurrentSheet(medication.id) : null;
