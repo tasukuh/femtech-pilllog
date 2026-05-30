@@ -10,7 +10,7 @@ import * as Notifications from 'expo-notifications';
 import { markDoseAsTaken, getTodaysDoseRecord } from '@/lib/db/queries/doseRecords';
 import { getActiveMedication } from '@/lib/db/queries/pillMedications';
 import { getCurrentSheet } from '@/lib/db/queries/sheets';
-import { scheduleOneShotReminder } from './setup';
+import { scheduleOneShotReminder, cancelFollowUpReminders } from './setup';
 import { queryClient } from '@/lib/queries/client';
 
 /**
@@ -75,6 +75,9 @@ export function registerNotificationHandler(): () => void {
 
           console.log(`[Notifications] Dose ${doseRecordId} marked as taken from notification`);
         } else if (actionIdentifier === 'SNOOZE_30') {
+          // 毎日繰り返し通知を全てキャンセル（スヌーズ後も +5分・+30分が届くのを防ぐ）
+          // 次回アプリ起動時に areDailyRemindersScheduled() が false を返し翌日分が再スケジュールされる
+          await cancelFollowUpReminders();
           const snoozeTime = new Date(Date.now() + 30 * 60 * 1000);
           await scheduleOneShotReminder(snoozeTime);
           console.log(`[Notifications] Snoozed until ${snoozeTime.toISOString()}`);
