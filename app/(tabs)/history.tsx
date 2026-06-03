@@ -102,11 +102,11 @@ export default function HistoryScreen() {
   const handlePreviousMonth = () => {
     const newMonth = subMonths(selectedMonth, 1);
 
-    // Free版: 今月より前は7日間までのみ
+    // Free版: 月末日が7日前より前の月はペイウォール対象
     const sevenDaysAgo = subDays(new Date(), 7);
-    const newMonthStart = startOfMonth(newMonth);
+    const newMonthEnd = endOfMonth(newMonth);
 
-    if (isBefore(newMonthStart, sevenDaysAgo)) {
+    if (isBefore(newMonthEnd, sevenDaysAgo)) {
       // Premium機能のペイウォール
       Alert.alert(
         'Premium機能です',

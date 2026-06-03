@@ -203,7 +203,7 @@ export async function scheduleDailyReminders(params: {
     const primaryAt = dateAtTime(day, primaryTime);
     await scheduleDateNotification({
       title: 'おはようございます ☀️',
-      body: '今日のピルを忘れずに',
+      body: '今日のケア、忘れずに',
       fireDate: primaryAt,
       kind: 'pill-primary',
       dateStr,
@@ -214,7 +214,7 @@ export async function scheduleDailyReminders(params: {
     // 2. +N分後（最大2件）— その日の dateStr で紐付け
     for (const offsetMin of intervals) {
       await scheduleDateNotification({
-        title: 'ピルの時間です ⏰',
+        title: '毎日のルーティン ⏰',
         body: 'まだ記録されていません。タップで確認',
         fireDate: new Date(primaryAt.getTime() + offsetMin * 60 * 1000),
         kind: 'pill-reminder',
@@ -227,8 +227,8 @@ export async function scheduleDailyReminders(params: {
     // 3. 22:00 夜の確認通知
     if (eveningEnabled) {
       await scheduleDateNotification({
-        title: '今日のピル、記録しましたか？🌙',
-        body: 'まだの方はタップして記録',
+        title: '今日のケア、記録しましたか？🌙',
+        body: 'まだの方はタップして確認',
         fireDate: dateAtTime(day, eveningTime),
         kind: 'pill-evening',
         dateStr,
@@ -294,7 +294,7 @@ export async function scheduleOneShotReminder(
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const notificationId = await Notifications.scheduleNotificationAsync({
     content: {
-      title: 'ピルの時間です ⏰',
+      title: '毎日のルーティン ⏰',
       body: 'タップで確認',
       data: { kind: 'pill-reminder', dateStr: todayStr } satisfies PillNotificationData,
       categoryIdentifier: 'PILL_REMINDER',
