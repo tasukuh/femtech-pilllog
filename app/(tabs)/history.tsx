@@ -1,9 +1,9 @@
 /**
  * 履歴・カレンダー画面
  *
- * 月次カレンダーで服薬記録を表示
- * Free版: 今月 + 過去7日間のみ
- * Premium版: 全履歴
+ * 月次カレンダーで服薬記録 + 1行日記を表示
+ * Free版: 今月 + 過去7日間（日記の閲覧・編集も7日まで）
+ * Premium版: 全履歴 + 7日以上前の日記 + トレンドグラフ（Phase 2）
  */
 
 import { useState } from 'react';
@@ -15,6 +15,8 @@ import {
   Pressable,
   Alert,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -31,12 +33,19 @@ import {
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { useMarkDoseTaken, useUndoDoseRecord } from '@/lib/queries/hooks';
+import {
+  useMarkDoseTaken,
+  useUndoDoseRecord,
+  useDailyNote,
+  useUpsertDailyNote,
+} from '@/lib/queries/hooks';
+import { isWithinFreeWindow } from '@/lib/premium';
 import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/Button';
 
 import { palette, typography, spacing, radius } from '@/design-tokens';
 import { CalendarGrid } from '@/components/domain/CalendarGrid';
+import { DailyNoteInput } from '@/components/domain/DailyNoteInput';
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
@@ -58,6 +67,10 @@ export default function HistoryScreen() {
   // Mutations
   const markDoseTaken = useMarkDoseTaken();
   const undoDoseRecord = useUndoDoseRecord();
+
+  // 選択日の1行日記（無料: 過去7日まで閲覧・編集）
+  const { data: selectedNote } = useDailyNote(selectedDate ?? new Date());
+  const upsertNote = useUpsertDailyNote();
 
   // ピル情報を取得
   const { data: medication, isLoading: isMedicationLoading } = useQuery({
@@ -142,6 +155,24 @@ export default function HistoryScreen() {
   // 日付タップ
   const handleDateTap = (date: Date) => {
     setSelectedDate(date);
+  };
+
+  // 7日以上前のメモ閲覧（Premium）のペイウォール
+  const showNotePaywall = () => {
+    Alert.alert(
+      'Premium機能です',
+      '7日以上前のメモを振り返るには、Premiumにアップグレードが必要です。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: 'Premiumを見る',
+          onPress: () => {
+            // TODO: ペイウォール表示
+            console.log('[History] Show paywall (note)');
+          },
+        },
+      ]
+    );
   };
 
   // 選択日の記録を取得
@@ -290,12 +321,12 @@ export default function HistoryScreen() {
           </Card>
         )}
 
-        {/* Free版の制限案内 */}
+        {/* Premium 案内（価値訴求） */}
         <Card style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Free版の制限</Text>
+          <Text style={styles.infoTitle}>Premiumでできること</Text>
           <Text style={styles.infoText}>
-            今月 + 過去7日間の履歴を表示しています。{'\n'}
-            全履歴を見るには Premiumにアップグレードしてください。
+            ・すべての履歴とメモをさかのぼって閲覧{'\n'}
+            ・気分と服薬の記録をグラフで振り返り
           </Text>
         </Card>
       </ScrollView>
@@ -311,11 +342,15 @@ export default function HistoryScreen() {
           style={styles.modalOverlay}
           onPress={() => setSelectedDate(null)}
         >
-          <Pressable
-            style={styles.modalContent}
-            onPress={(e) => e.stopPropagation()}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.modalKeyboardWrap}
           >
-            <View style={styles.modalHeader}>
+            <Pressable
+              style={styles.modalContent}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 {selectedDate && format(selectedDate, 'M月d日（E）', { locale: ja })}
               </Text>
@@ -415,8 +450,43 @@ export default function HistoryScreen() {
                   </View>
                 );
               })()}
+
+              {/* 1行日記（無料: 過去7日まで閲覧・編集 / Premium: それ以前） */}
+              {selectedDate && (() => {
+                const noteDate = selectedDate;
+                const today = startOfDay(new Date());
+                const isFuture = isAfter(startOfDay(noteDate), today);
+                if (isFuture) return null; // 未来日はメモ非表示
+
+                const locked = !isWithinFreeWindow(noteDate);
+
+                return (
+                  <View style={styles.modalNoteSection}>
+                    <Text style={styles.modalNoteLabel}>ひとこと</Text>
+                    {locked ? (
+                      <DailyNoteInput
+                        value=""
+                        onSave={() => {}}
+                        locked
+                        compact
+                        onLockedPress={showNotePaywall}
+                      />
+                    ) : (
+                      <DailyNoteInput
+                        key={formatDate(noteDate)}
+                        value={selectedNote?.note ?? ''}
+                        onSave={(note) =>
+                          upsertNote.mutate({ date: noteDate, note })
+                        }
+                        compact
+                      />
+                    )}
+                  </View>
+                );
+              })()}
             </View>
-          </Pressable>
+            </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
     </View>
@@ -515,6 +585,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.xl,
   },
+  modalKeyboardWrap: {
+    width: '100%',
+    alignItems: 'center',
+  },
   modalContent: {
     backgroundColor: palette.cardBg,
     borderRadius: radius.lg,
@@ -574,5 +648,17 @@ const styles = StyleSheet.create({
     color: palette.muted,
     textAlign: 'center',
     paddingVertical: spacing.md,
+  },
+  modalNoteSection: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: palette.border,
+    gap: spacing.sm,
+  },
+  modalNoteLabel: {
+    fontSize: typography.scale.sm,
+    fontWeight: typography.weight.medium,
+    color: palette.muted,
   },
 });

@@ -13,7 +13,11 @@ import {
   markDoseAsTaken as markDoseAsTakenDb,
   undoDoseRecord as undoDoseRecordDb,
 } from '../db/queries/doseRecords';
-import type { PillMedication, Sheet, DoseRecord } from '../db/schema';
+import {
+  getDailyNote,
+  upsertDailyNote as upsertDailyNoteDb,
+} from '../db/queries/dailyNotes';
+import type { PillMedication, Sheet, DoseRecord, DailyNote } from '../db/schema';
 
 /**
  * アクティブなピル情報を取得
@@ -103,6 +107,55 @@ export function useMarkDoseTaken() {
     },
     onError: (error: Error) => {
       console.error('[Hooks] Failed to mark dose as taken:', error);
+    },
+  });
+}
+
+/**
+ * 指定日の1行日記を取得
+ */
+export function useDailyNote(date: Date) {
+  const dateStr = format(date, 'yyyy-MM-dd');
+
+  return useQuery<DailyNote | null, Error>({
+    queryKey: ['dailyNote', dateStr],
+    queryFn: () => getDailyNote(date),
+    staleTime: 60 * 1000,
+  });
+}
+
+/**
+ * 1行日記を保存するミューテーション（upsert）
+ */
+export function useUpsertDailyNote() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      date,
+      note,
+      mood,
+    }: {
+      date: Date;
+      note: string;
+      mood?: number | null;
+    }) => {
+      await upsertDailyNoteDb(date, note, mood);
+    },
+    onSuccess: async (_data, variables) => {
+      const dateStr = format(variables.date, 'yyyy-MM-dd');
+      await queryClient.invalidateQueries({
+        queryKey: ['dailyNote', dateStr],
+        refetchType: 'active',
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ['dailyNotes'], // 期間取得（カレンダー・トレンド）
+        refetchType: 'active',
+      });
+      console.log('[Hooks] Daily note saved, queries invalidated');
+    },
+    onError: (error: Error) => {
+      console.error('[Hooks] Failed to save daily note:', error);
     },
   });
 }

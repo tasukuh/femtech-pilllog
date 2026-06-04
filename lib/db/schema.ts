@@ -103,6 +103,26 @@ export const appSettings = sqliteTable('app_settings', {
   value: text('value').notNull(),
 });
 
+// 1行日記（その日のひとこと）
+// 無料: 書く・編集 + 過去7日の閲覧。Premium: 7日以上前の閲覧 + トレンドグラフ。
+// 健康データは完全ローカル保存（サーバー送信なし）。
+export const dailyNotes = sqliteTable(
+  'daily_notes',
+  {
+    id: text('id').primaryKey().notNull(),
+    date: text('date').notNull().unique(), // "yyyy-MM-dd"（1日1件）
+    note: text('note').notNull().default(''),
+    // 気分スコア 1-5（nullable）。現状UIには出さないが、将来の
+    // トレンドグラフ（Premium）でマイグレーション不要にするため先に保持する。
+    mood: integer('mood'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    dateIdx: index('idx_daily_notes_date').on(table.date),
+  })
+);
+
 // 型推論（Drizzle ORM の強み）
 export type PillMedication = typeof pillMedications.$inferSelect;
 export type NewPillMedication = typeof pillMedications.$inferInsert;
@@ -120,3 +140,6 @@ export type NotificationSettings = typeof notificationSettings.$inferSelect;
 export type NewNotificationSettings = typeof notificationSettings.$inferInsert;
 
 export type AppSetting = typeof appSettings.$inferSelect;
+
+export type DailyNote = typeof dailyNotes.$inferSelect;
+export type NewDailyNote = typeof dailyNotes.$inferInsert;

@@ -72,6 +72,7 @@ async function runMigrations(sqlite: SQLiteDatabase) {
     // 実行すべきマイグレーション
     const migrations = [
       { version: 1, name: '0001_initial', statements: MIGRATION_0001_STATEMENTS },
+      { version: 2, name: '0002_add_daily_notes', statements: MIGRATION_0002_STATEMENTS },
       // 将来のマイグレーションをここに追加
     ];
 
@@ -218,6 +219,27 @@ const MIGRATION_0001_STATEMENTS = [
 ];
 
 /**
+ * マイグレーション 0002 - 1行日記（daily_notes）テーブル追加
+ */
+const MIGRATION_0002_STATEMENTS = [
+  // 1行日記テーブル（1日1件、健康データは完全ローカル）
+  `CREATE TABLE IF NOT EXISTS daily_notes (
+    id TEXT PRIMARY KEY NOT NULL,
+    date TEXT NOT NULL UNIQUE,
+    note TEXT NOT NULL DEFAULT '',
+    mood INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+
+  // 日付インデックス（期間取得用）
+  `CREATE INDEX IF NOT EXISTS idx_daily_notes_date ON daily_notes(date)`,
+
+  // スキーマバージョンを 2 に更新
+  `INSERT OR REPLACE INTO app_settings (key, value) VALUES ('schema_version', '2')`,
+];
+
+/**
  * データベースをリセット（開発用）
  */
 export async function resetDB() {
@@ -227,6 +249,7 @@ export async function resetDB() {
   const tables = [
     'dose_records',
     'side_effects',
+    'daily_notes',
     'sheets',
     'pill_medications',
     'notification_settings',

@@ -23,11 +23,14 @@ import { useQuery } from '@tanstack/react-query';
 import { palette, typography, spacing, radius } from '@/design-tokens';
 import { SheetProgressRing } from '@/components/domain/SheetProgressRing';
 import { DoseCard } from '@/components/domain/DoseCard';
+import { DailyNoteInput } from '@/components/domain/DailyNoteInput';
 import {
   useActiveMedication,
   useCurrentSheet,
   useTodaysDose,
   useMarkDoseTaken,
+  useDailyNote,
+  useUpsertDailyNote,
 } from '@/lib/queries/hooks';
 import { getDoseRecordsBySheet } from '@/lib/db/queries/doseRecords';
 
@@ -52,6 +55,17 @@ export default function HomeScreen() {
 
   // Mutation
   const markDoseTaken = useMarkDoseTaken();
+
+  // 今日の1行日記（無料機能）
+  const today = React.useMemo(() => new Date(), []);
+  const { data: todaysNote } = useDailyNote(today);
+  const upsertNote = useUpsertDailyNote();
+  const handleSaveNote = React.useCallback(
+    (note: string) => {
+      upsertNote.mutate({ date: today, note });
+    },
+    [upsertNote, today]
+  );
 
   const isLoading = medicationLoading || sheetLoading || doseLoading || recordsLoading;
 
@@ -174,6 +188,8 @@ export default function HomeScreen() {
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -195,6 +211,15 @@ export default function HomeScreen() {
             medication={medication}
             doseRecord={todaysDose}
             onTap={handleDoseTap}
+          />
+        </View>
+
+        {/* Today's Note Section（1行日記・無料） */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>今日のひとこと</Text>
+          <DailyNoteInput
+            value={todaysNote?.note ?? ''}
+            onSave={handleSaveNote}
           />
         </View>
 
