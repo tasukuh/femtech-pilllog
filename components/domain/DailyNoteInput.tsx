@@ -113,10 +113,13 @@ export function DailyNoteInput({
         value={draft}
         onChangeText={setDraft}
         onBlur={handleBlur}
+        onSubmitEditing={handleBlur}
         editable={editable}
         placeholder={placeholder}
         placeholderTextColor={palette.gray400}
         multiline
+        blurOnSubmit
+        returnKeyType="done"
         maxLength={DAILY_NOTE_MAX_LENGTH}
         style={[
           styles.input,

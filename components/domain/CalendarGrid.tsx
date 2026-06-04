@@ -17,6 +17,7 @@ import {
   isSameMonth,
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { Lock } from 'lucide-react-native';
 import { palette, typography, spacing, radius } from '@/design-tokens';
 import { formatDate } from '@/lib/utils/date';
 import type { DoseRecord } from '@/lib/db/schema';
@@ -25,13 +26,15 @@ type CalendarGridProps = {
   month: Date;
   records: DoseRecord[];
   onDateTap?: (date: Date) => void;
+  /** Free版で閲覧できない日付か判定する関数 */
+  isDateLocked?: (date: Date) => boolean;
 };
 
 type DayStatus = 'taken' | 'missed' | 'placebo' | 'future' | 'none';
 
 const WEEKDAYS = ['月', '火', '水', '木', '金', '土', '日'];
 
-export function CalendarGrid({ month, records, onDateTap }: CalendarGridProps) {
+export function CalendarGrid({ month, records, onDateTap, isDateLocked }: CalendarGridProps) {
   // 月の最初と最後の日
   const monthStart = startOfMonth(month);
   const monthEnd = endOfMonth(month);
@@ -123,6 +126,7 @@ export function CalendarGrid({ month, records, onDateTap }: CalendarGridProps) {
           {week.map((date) => {
             const isCurrentMonth = isSameMonth(date, month);
             const isToday = isSameDay(date, new Date());
+            const locked = isCurrentMonth && !!isDateLocked?.(date);
             const status = getDateStatus(date);
             const { icon, color } = getStatusDisplay(status);
 
@@ -136,7 +140,7 @@ export function CalendarGrid({ month, records, onDateTap }: CalendarGridProps) {
                 ]}
                 onPress={() => handleDatePress(date)}
                 disabled={!isCurrentMonth}
-                accessibilityLabel={`${format(date, 'M月d日', { locale: ja })}、ステータス: ${status}`}
+                accessibilityLabel={`${format(date, 'M月d日', { locale: ja })}、${locked ? 'Premium限定' : `ステータス: ${status}`}`}
                 accessibilityRole="button"
               >
                 <Text
@@ -144,12 +148,15 @@ export function CalendarGrid({ month, records, onDateTap }: CalendarGridProps) {
                     styles.dayNumber,
                     !isCurrentMonth && styles.otherMonthText,
                     isToday && styles.todayText,
+                    locked && styles.lockedText,
                   ]}
                 >
                   {format(date, 'd')}
                 </Text>
-                {isCurrentMonth && icon && (
-                  <Text style={[styles.statusIcon, { color }]}>{icon}</Text>
+                {isCurrentMonth && (
+                  locked
+                    ? <Lock size={10} color={palette.gray300} />
+                    : icon && <Text style={[styles.statusIcon, { color }]}>{icon}</Text>
                 )}
               </Pressable>
             );
@@ -204,6 +211,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   otherMonthText: {
+    color: palette.gray300,
+  },
+  lockedText: {
     color: palette.gray300,
   },
   todayText: {

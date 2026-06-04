@@ -39,7 +39,7 @@ import {
   useDailyNote,
   useUpsertDailyNote,
 } from '@/lib/queries/hooks';
-import { isWithinFreeWindow } from '@/lib/premium';
+import { isWithinFreeWindow, usePremium } from '@/lib/premium';
 import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/Button';
 
@@ -63,6 +63,7 @@ import type { DoseRecord } from '@/lib/db/schema';
 export default function HistoryScreen() {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const { isPremium } = usePremium();
 
   // Mutations
   const markDoseTaken = useMarkDoseTaken();
@@ -298,6 +299,7 @@ export default function HistoryScreen() {
             month={selectedMonth}
             records={records}
             onDateTap={handleDateTap}
+            isDateLocked={isPremium ? undefined : (date) => !isWithinFreeWindow(date)}
           />
         )}
 
