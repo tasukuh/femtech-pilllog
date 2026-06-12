@@ -4,7 +4,7 @@
  * 最頻アクション: markDoseAsTaken()
  */
 
-import { eq, and, gte, lte, desc } from 'drizzle-orm';
+import { eq, and, gte, lte, desc, gt } from 'drizzle-orm';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { getDb } from '../index';
 import { doseRecords, type DoseRecord, type NewDoseRecord } from '../schema';
@@ -219,8 +219,7 @@ export async function clearFutureDoseRecords(): Promise<number> {
     })
     .where(
       and(
-        // scheduled_date が今日より未来
-        (doseRecords.scheduledDate as any) > today,
+        gt(doseRecords.scheduledDate, today),
         eq(doseRecords.status, 'taken')
       )
     );

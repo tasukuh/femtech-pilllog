@@ -20,7 +20,13 @@
           "remote-notification"
         ],
         "NSUserNotificationsUsageDescription": "服薬時刻にお知らせするために使用します",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSHealthShareUsageDescription": "睡眠時間と安静時心拍数を読み込み、服薬との相関を分析します。データはデバイス内にのみ保存されます",
+        "NSHealthUpdateUsageDescription": "ピルの服薬記録をAppleヘルスケアに書き込みます。データはデバイス内にのみ保存されます"
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": []
       },
       "runtimeVersion": {
         "policy": "appVersion"
@@ -56,6 +62,12 @@
           "icon": "./assets/images/notification-icon.png",
           "color": "#C4645C",
           "sounds": []
+        }
+      ],
+      [
+        "react-native-health",
+        {
+          "isClinicalDataEnabled": false
         }
       ]
     ],

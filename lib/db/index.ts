@@ -73,7 +73,7 @@ async function runMigrations(sqlite: SQLiteDatabase) {
     const migrations = [
       { version: 1, name: '0001_initial', statements: MIGRATION_0001_STATEMENTS },
       { version: 2, name: '0002_add_daily_notes', statements: MIGRATION_0002_STATEMENTS },
-      // 将来のマイグレーションをここに追加
+      { version: 3, name: '0003_add_health_samples', statements: MIGRATION_0003_STATEMENTS },
     ];
 
     console.log(`[DB] Total migrations available: ${migrations.length}`);
@@ -240,6 +240,26 @@ const MIGRATION_0002_STATEMENTS = [
 ];
 
 /**
+ * マイグレーション 0003 - HealthKit キャッシュテーブル追加
+ */
+const MIGRATION_0003_STATEMENTS = [
+  `CREATE TABLE IF NOT EXISTS health_samples (
+    id TEXT PRIMARY KEY NOT NULL,
+    sample_type TEXT NOT NULL CHECK(sample_type IN ('sleep', 'resting_hr')),
+    date TEXT NOT NULL,
+    value INTEGER NOT NULL,
+    source_start_at TEXT NOT NULL,
+    source_end_at TEXT NOT NULL,
+    fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+
+  `CREATE INDEX IF NOT EXISTS idx_health_samples_date_type
+    ON health_samples(date, sample_type)`,
+
+  `INSERT OR REPLACE INTO app_settings (key, value) VALUES ('schema_version', '3')`,
+];
+
+/**
  * データベースをリセット（開発用）
  */
 export async function resetDB() {
@@ -250,6 +270,7 @@ export async function resetDB() {
     'dose_records',
     'side_effects',
     'daily_notes',
+    'health_samples',
     'sheets',
     'pill_medications',
     'notification_settings',
