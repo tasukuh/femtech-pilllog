@@ -8,6 +8,7 @@
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
+
 // ピル種類マスター
 export const pillMedications = sqliteTable('pill_medications', {
   id: text('id').primaryKey().notNull(),
@@ -123,6 +124,26 @@ export const dailyNotes = sqliteTable(
   })
 );
 
+// HealthKit キャッシュ（Apple Health から読み込んだデータをローカルに保存）
+// 健康データは完全ローカル保存（サーバー送信なし）。
+export const healthSamples = sqliteTable(
+  'health_samples',
+  {
+    id: text('id').primaryKey().notNull(),
+    sampleType: text('sample_type', {
+      enum: ['sleep', 'resting_hr']
+    }).notNull(),
+    date: text('date').notNull(),              // 'yyyy-MM-dd'
+    value: integer('value').notNull(),          // sleep: 分, resting_hr: BPM
+    sourceStartAt: text('source_start_at').notNull(),
+    sourceEndAt: text('source_end_at').notNull(),
+    fetchedAt: text('fetched_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => ({
+    dateTypeIdx: index('idx_health_samples_date_type').on(table.date, table.sampleType),
+  })
+);
+
 // 型推論（Drizzle ORM の強み）
 export type PillMedication = typeof pillMedications.$inferSelect;
 export type NewPillMedication = typeof pillMedications.$inferInsert;
@@ -143,3 +164,6 @@ export type AppSetting = typeof appSettings.$inferSelect;
 
 export type DailyNote = typeof dailyNotes.$inferSelect;
 export type NewDailyNote = typeof dailyNotes.$inferInsert;
+
+export type HealthSampleRow = typeof healthSamples.$inferSelect;
+export type NewHealthSampleRow = typeof healthSamples.$inferInsert;

@@ -4,7 +4,7 @@
  * ピル管理・通知設定・データ管理・その他
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,8 @@ import { palette, typography, spacing, radius } from '@/design-tokens';
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
+import { usePremium } from '@/lib/premium';
+import { requestHealthPermissions, isHealthKitAvailable } from '@/lib/health/permissions';
 
 import { getActiveMedication } from '@/lib/db/queries/pillMedications';
 import {
@@ -52,8 +54,16 @@ export default function SettingsScreen() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const { resetOnboarding } = useAppStore();
+  const { isPremium } = usePremium();
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [tempTime, setTempTime] = useState<Date | null>(null);
+  const [healthPermissionGranted, setHealthPermissionGranted] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (isPremium && Platform.OS === 'ios') {
+      isHealthKitAvailable().then(setHealthPermissionGranted);
+    }
+  }, [isPremium]);
 
   // ピル情報を取得
   const {
@@ -311,19 +321,7 @@ export default function SettingsScreen() {
           <Card style={styles.settingCard}>
             <Pressable
               style={styles.settingRow}
-              onPress={() => {
-                Alert.alert(
-                  'Premium機能です',
-                  '複数のピルを管理するには、Premiumにアップグレードが必要です。',
-                  [
-                    { text: 'キャンセル', style: 'cancel' },
-                    { text: 'Premiumを見る', onPress: () => {
-                      // TODO: ペイウォール表示
-                      console.log('[Settings] Show paywall');
-                    }},
-                  ]
-                );
-              }}
+              onPress={() => router.push('/modal/paywall')}
               accessibilityRole="button"
               accessibilityLabel="新しいピルを追加"
             >
@@ -426,7 +424,55 @@ export default function SettingsScreen() {
           </Card>
         </View>
 
-        {/* セクション3: データ */}
+        {/* セクション3: ヘルスケア連携（iOS のみ） */}
+        {Platform.OS === 'ios' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>ヘルスケア連携</Text>
+            <Card style={styles.settingCard}>
+              {isPremium ? (
+                <Pressable
+                  style={styles.settingRow}
+                  onPress={async () => {
+                    if (healthPermissionGranted) {
+                      Linking.openSettings();
+                    } else {
+                      const granted = await requestHealthPermissions();
+                      setHealthPermissionGranted(granted);
+                      if (!granted) Linking.openSettings();
+                    }
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Appleヘルスケアの権限を管理"
+                >
+                  <View style={styles.settingLeft}>
+                    <Text style={styles.settingLabel}>Appleヘルスケア</Text>
+                    <Text style={styles.settingHint}>
+                      {healthPermissionGranted ? '接続済み' : '権限を許可する'}
+                    </Text>
+                  </View>
+                  <ChevronRight color={palette.muted} size={20} />
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={styles.settingRow}
+                  onPress={() => router.push('/modal/paywall')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Appleヘルスケア連携をアンロック"
+                >
+                  <View style={styles.settingLeft}>
+                    <Text style={[styles.settingLabel, styles.premiumLabel]}>
+                      Appleヘルスケア連携
+                    </Text>
+                    <Text style={styles.premiumBadge}>Premium</Text>
+                  </View>
+                  <ChevronRight color={palette.gray400} size={20} />
+                </Pressable>
+              )}
+            </Card>
+          </View>
+        )}
+
+        {/* セクション5: データ */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>データ</Text>
 

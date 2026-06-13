@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { QueryClientProvider } from '@tanstack/react-query';
 
+import { Platform } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAppStore } from '@/stores/appStore';
 import { initDB } from '@/lib/db';
@@ -50,6 +51,22 @@ export default function RootLayout() {
         // データベース初期化（完了を待つ）
         await initDB();
         console.log('[App] Database initialized successfully');
+
+        // RevenueCat 初期化（iOS のみ）
+        if (Platform.OS === 'ios') {
+          try {
+            const { default: Purchases } = await import('react-native-purchases');
+            const rcKey = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY;
+            if (rcKey) {
+              Purchases.configure({ apiKey: rcKey });
+              console.log('[App] RevenueCat initialized');
+            } else {
+              console.warn('[App] EXPO_PUBLIC_REVENUECAT_IOS_KEY not set');
+            }
+          } catch (err) {
+            console.warn('[App] RevenueCat init failed (non-fatal):', err);
+          }
+        }
 
         // オンボーディング状態をDBから読み込んでストアに設定
         const onboardingCompleted = await getOnboardingStatus();

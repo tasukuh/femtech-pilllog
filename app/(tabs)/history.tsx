@@ -39,6 +39,7 @@ import {
   useDailyNote,
   useUpsertDailyNote,
 } from '@/lib/queries/hooks';
+import { useRouter } from 'expo-router';
 import { isWithinFreeWindow, usePremium } from '@/lib/premium';
 import { toast } from '@/lib/toast';
 import { Button } from '@/components/ui/Button';
@@ -46,6 +47,7 @@ import { Button } from '@/components/ui/Button';
 import { palette, typography, spacing, radius } from '@/design-tokens';
 import { CalendarGrid } from '@/components/domain/CalendarGrid';
 import { DailyNoteInput } from '@/components/domain/DailyNoteInput';
+import { HealthDashboard } from '@/components/domain/HealthDashboard';
 import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
@@ -64,6 +66,7 @@ export default function HistoryScreen() {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const { isPremium } = usePremium();
+  const router = useRouter();
 
   // Mutations
   const markDoseTaken = useMarkDoseTaken();
@@ -127,10 +130,7 @@ export default function HistoryScreen() {
         '7日以上前の履歴を見るには、Premiumにアップグレードが必要です。',
         [
           { text: 'キャンセル', style: 'cancel' },
-          { text: 'Premiumを見る', onPress: () => {
-            // TODO: ペイウォール表示
-            console.log('[History] Show paywall');
-          }},
+          { text: 'Premiumを見る', onPress: () => router.push('/modal/paywall') },
         ]
       );
       return;
@@ -165,13 +165,7 @@ export default function HistoryScreen() {
       '7日以上前のメモを振り返るには、Premiumにアップグレードが必要です。',
       [
         { text: 'キャンセル', style: 'cancel' },
-        {
-          text: 'Premiumを見る',
-          onPress: () => {
-            // TODO: ペイウォール表示
-            console.log('[History] Show paywall (note)');
-          },
-        },
+        { text: 'Premiumを見る', onPress: () => router.push('/modal/paywall') },
       ]
     );
   };
@@ -323,14 +317,25 @@ export default function HistoryScreen() {
           </Card>
         )}
 
-        {/* Premium 案内（価値訴求） */}
-        <Card style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Premiumでできること</Text>
-          <Text style={styles.infoText}>
-            ・すべての履歴とメモをさかのぼって閲覧{'\n'}
-            ・気分と服薬の記録をグラフで振り返り
-          </Text>
-        </Card>
+        {/* HealthKit ダッシュボード（Premium: 表示 / 非Premium: 価値訴求カード） */}
+        {currentSheet && isPremium ? (
+          <HealthDashboard sheetId={currentSheet.id} />
+        ) : !isPremium ? (
+          <Card style={styles.infoCard}>
+            <Text style={styles.infoTitle}>Premiumでできること</Text>
+            <Text style={styles.infoText}>
+              ・すべての履歴とメモをさかのぼって閲覧{'\n'}
+              ・Appleヘルスケアと連携して睡眠・心拍との相関を確認
+            </Text>
+            <Button
+              onPress={() => router.push('/modal/paywall')}
+              variant="secondary"
+              fullWidth
+            >
+              詳しく見る
+            </Button>
+          </Card>
+        ) : null}
       </ScrollView>
 
       {/* 日付詳細モーダル */}
@@ -568,6 +573,7 @@ const styles = StyleSheet.create({
   infoCard: {
     backgroundColor: palette.primaryBg,
     borderColor: palette.primarySoft,
+    gap: spacing.md,
   },
   infoTitle: {
     fontSize: typography.scale.body,
