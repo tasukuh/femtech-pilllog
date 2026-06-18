@@ -21,15 +21,30 @@ export const FREE_HISTORY_DAYS = 7;
 const ENTITLEMENT_ID = 'premium';
 
 /**
+ * QA / TestFlight 用のビルド時バイパス。
+ *
+ * `EXPO_PUBLIC_QA_PREMIUM=1` でビルドした時のみ true になり、RevenueCat を
+ * 一切呼ばずに常に Premium 扱いにする。RevenueCat 未設定でもテスターが
+ * Premium 機能（Appleヘルスケア連携グラフ等）を検証できるようにするためのもの。
+ *
+ * ⚠️ 本番（App Store 審査）ビルドではこのフラグを**必ず外す**こと。
+ *    未設定（通常ビルド）なら false。
+ */
+const QA_PREMIUM = process.env.EXPO_PUBLIC_QA_PREMIUM === '1';
+
+/**
  * Premium 加入状態を返すフック。
  * RevenueCat が利用できない環境（Android・シミュレータ等）では false を返す。
  */
 export function usePremium(): { isPremium: boolean; isLoading: boolean } {
-  const [isPremium, setIsPremium] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isPremium, setIsPremium] = useState(QA_PREMIUM);
+  const [isLoading, setIsLoading] = useState(!QA_PREMIUM);
   const listenerRef = useRef<((info: import('react-native-purchases').CustomerInfo) => void) | null>(null);
 
   useEffect(() => {
+    // QA バイパス時は RevenueCat を呼ばず常に Premium 扱い
+    if (QA_PREMIUM) return;
+
     if (Platform.OS !== 'ios') {
       setIsLoading(false);
       return;
