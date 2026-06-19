@@ -22,6 +22,15 @@
       "ios": {
         "simulator": false
       }
+    },
+    "qa": {
+      "extends": "production",
+      "env": {
+        "EXPO_PUBLIC_QA_PREMIUM": "1"
+      },
+      "ios": {
+        "simulator": false
+      }
     }
   },
   "submit": {
