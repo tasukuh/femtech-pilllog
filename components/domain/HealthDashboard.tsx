@@ -16,8 +16,13 @@ import { palette, typography, spacing, radius } from '@/design-tokens';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { usePremium } from '@/lib/premium';
-import { requestHealthPermissions, isHealthKitAvailable } from '@/lib/health/permissions';
+import {
+  requestHealthPermissions,
+  isHealthKitAvailable,
+  HEALTH_CONNECTED_KEY,
+} from '@/lib/health/permissions';
 import { fetchCorrelationData } from '@/lib/health/queries';
+import { getSetting, setSetting } from '@/lib/db/queries/appSettings';
 import { CorrelationChart } from './CorrelationChart';
 
 type Props = {
@@ -33,17 +38,39 @@ export function HealthDashboard({ sheetId }: Props) {
   // iOS 以外は表示しない
   if (Platform.OS !== 'ios') return null;
 
-  // 権限状態の初期チェック
+  // 接続状態の初期チェック
+  // isHealthKitAvailable() は「端末能力」であって「権限」ではないため、
+  // hasPermission には使わない。過去に接続済みなら HealthKit を再初期化
+  // （許可済みならダイアログは出ない）してデータ表示へ、未接続なら接続ボタンを出す。
   useEffect(() => {
     if (!isPremium) return;
-    isHealthKitAvailable().then((available) => {
-      setHasPermission(available);
-    });
+    let cancelled = false;
+    (async () => {
+      const available = await isHealthKitAvailable();
+      if (!available) {
+        if (!cancelled) setHasPermission(false);
+        return;
+      }
+      const connected = await getSetting(HEALTH_CONNECTED_KEY);
+      if (connected === 'true') {
+        // 既に接続済み: 再初期化（未許可項目だけダイアログ、許可済みは無音）してから読み込む
+        const granted = await requestHealthPermissions();
+        if (!cancelled) setHasPermission(granted);
+      } else {
+        if (!cancelled) setHasPermission(false); // 「ヘルスケアを接続する」ボタンを表示
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [isPremium]);
 
   const handleRequestPermission = async () => {
     setIsRequestingPermission(true);
     const granted = await requestHealthPermissions();
+    if (granted) {
+      await setSetting(HEALTH_CONNECTED_KEY, 'true');
+    }
     setHasPermission(granted);
     setIsRequestingPermission(false);
   };

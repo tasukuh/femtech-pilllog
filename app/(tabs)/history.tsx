@@ -119,21 +119,22 @@ export default function HistoryScreen() {
   const handlePreviousMonth = () => {
     const newMonth = subMonths(selectedMonth, 1);
 
-    // Free版: 月末日が7日前より前の月はペイウォール対象
-    const sevenDaysAgo = subDays(new Date(), 7);
-    const newMonthEnd = endOfMonth(newMonth);
+    // Free版のみ: 月末日が7日前より前の月はペイウォール対象（Premiumは無制限）
+    if (!isPremium) {
+      const sevenDaysAgo = subDays(new Date(), 7);
+      const newMonthEnd = endOfMonth(newMonth);
 
-    if (isBefore(newMonthEnd, sevenDaysAgo)) {
-      // Premium機能のペイウォール
-      Alert.alert(
-        'Premium機能です',
-        '7日以上前の履歴を見るには、Premiumにアップグレードが必要です。',
-        [
-          { text: 'キャンセル', style: 'cancel' },
-          { text: 'Premiumを見る', onPress: () => router.push('/modal/paywall') },
-        ]
-      );
-      return;
+      if (isBefore(newMonthEnd, sevenDaysAgo)) {
+        Alert.alert(
+          'Premium機能です',
+          '7日以上前の履歴を見るには、Premiumにアップグレードが必要です。',
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'Premiumを見る', onPress: () => router.push('/modal/paywall') },
+          ]
+        );
+        return;
+      }
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -465,7 +466,7 @@ export default function HistoryScreen() {
                 const isFuture = isAfter(startOfDay(noteDate), today);
                 if (isFuture) return null; // 未来日はメモ非表示
 
-                const locked = !isWithinFreeWindow(noteDate);
+                const locked = !isPremium && !isWithinFreeWindow(noteDate);
 
                 return (
                   <View style={styles.modalNoteSection}>

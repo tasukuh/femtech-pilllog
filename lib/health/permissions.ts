@@ -16,6 +16,13 @@ export const HEALTH_PERMISSIONS: HealthKitPermissions = {
 };
 
 /**
+ * app_settings に保存する「ヘルスケア接続済み」フラグのキー。
+ * HealthKit の read 権限はプライバシー上アプリから照会できないため、
+ * ユーザーが一度接続したことをこのフラグで永続化して両画面で共有する。
+ */
+export const HEALTH_CONNECTED_KEY = 'health_connected';
+
+/**
  * HealthKit を初期化して権限を要求する。
  * iOS 以外では即座に false を返す。
  */
@@ -49,11 +56,15 @@ export async function isHealthKitAvailable(): Promise<boolean> {
 
   try {
     const AppleHealthKit = (await import('react-native-health')).default;
-    return new Promise((resolve) => {
-      AppleHealthKit.isAvailable((error: Object, available: boolean) => {
-        resolve(!error && available);
-      });
-    });
+    return await Promise.race([
+      new Promise<boolean>((resolve) => {
+        AppleHealthKit.isAvailable((error: Object, available: boolean) => {
+          resolve(!error && available);
+        });
+      }),
+      // フォールバック: ネイティブ callback が返らなくても固まらない（iPhone は HealthKit 利用可）
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 3000)),
+    ]);
   } catch {
     return false;
   }

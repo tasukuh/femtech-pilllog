@@ -26,7 +26,8 @@ import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ErrorDisplay } from '@/components/ui/ErrorDisplay';
 import { usePremium } from '@/lib/premium';
-import { requestHealthPermissions, isHealthKitAvailable } from '@/lib/health/permissions';
+import { requestHealthPermissions, HEALTH_CONNECTED_KEY } from '@/lib/health/permissions';
+import { getSetting, setSetting } from '@/lib/db/queries/appSettings';
 
 import { getActiveMedication } from '@/lib/db/queries/pillMedications';
 import {
@@ -61,7 +62,8 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     if (isPremium && Platform.OS === 'ios') {
-      isHealthKitAvailable().then(setHealthPermissionGranted);
+      // 「利用可能か」ではなく「接続済みフラグ」で判定（HealthDashboard と共通）
+      getSetting(HEALTH_CONNECTED_KEY).then((v) => setHealthPermissionGranted(v === 'true'));
     }
   }, [isPremium]);
 
@@ -321,7 +323,14 @@ export default function SettingsScreen() {
           <Card style={styles.settingCard}>
             <Pressable
               style={styles.settingRow}
-              onPress={() => router.push('/modal/paywall')}
+              onPress={() => {
+                if (isPremium) {
+                  // Premium は購入済み。複数ピル管理の追加機能自体は未実装
+                  Alert.alert('準備中', '複数ピルの管理機能は現在開発中です');
+                } else {
+                  router.push('/modal/paywall');
+                }
+              }}
               accessibilityRole="button"
               accessibilityLabel="新しいピルを追加"
             >
@@ -329,7 +338,7 @@ export default function SettingsScreen() {
                 <Text style={[styles.settingLabel, styles.premiumLabel]}>
                   新しいピルを追加
                 </Text>
-                <Text style={styles.premiumBadge}>Premium</Text>
+                {!isPremium && <Text style={styles.premiumBadge}>Premium</Text>}
               </View>
               <ChevronRight color={palette.gray400} size={20} />
             </Pressable>
@@ -437,6 +446,7 @@ export default function SettingsScreen() {
                       Linking.openSettings();
                     } else {
                       const granted = await requestHealthPermissions();
+                      if (granted) await setSetting(HEALTH_CONNECTED_KEY, 'true');
                       setHealthPermissionGranted(granted);
                       if (!granted) Linking.openSettings();
                     }
