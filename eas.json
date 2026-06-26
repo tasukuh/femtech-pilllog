@@ -7,25 +7,33 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "ios": {
         "simulator": false
       }
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "ios": {
         "simulator": false
       }
     },
     "production": {
       "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_REVENUECAT_IOS_KEY": "appl_EybJYjJuUcAXpsXNCGqUQUIKVde"
+      },
       "ios": {
         "simulator": false
       }
     },
     "qa": {
       "extends": "production",
+      "channel": "qa",
       "env": {
+        "EXPO_PUBLIC_REVENUECAT_IOS_KEY": "appl_EybJYjJuUcAXpsXNCGqUQUIKVde",
         "EXPO_PUBLIC_QA_PREMIUM": "1"
       },
       "ios": {
