@@ -23,7 +23,7 @@ import {
   parseReminderIntervals,
 } from '@/lib/db/queries/notificationSettings';
 import { getActiveMedication } from '@/lib/db/queries/pillMedications';
-import { getCurrentSheet } from '@/lib/db/queries/sheets';
+import { getCurrentSheet, checkAndProgressSheet } from '@/lib/db/queries/sheets';
 import { getTodaysDoseRecord } from '@/lib/db/queries/doseRecords';
 
 export {
@@ -85,6 +85,9 @@ export default function RootLayout() {
           try {
             const medication = await getActiveMedication();
             if (medication) {
+              // シートが終了していたら次のシートを自動作成してから通知を組む
+              await checkAndProgressSheet(medication.id);
+
               const settings = await getNotificationSettings();
               const sheet = await getCurrentSheet(medication.id);
               const todaysDose = sheet ? await getTodaysDoseRecord(sheet.id) : null;

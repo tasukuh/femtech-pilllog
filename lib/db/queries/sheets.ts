@@ -6,9 +6,9 @@
  */
 
 import { eq, and, desc, isNull } from 'drizzle-orm';
-import { addDays, format } from 'date-fns';
+import { addDays, format, parseISO } from 'date-fns';
 import { getDb } from '../index';
-import { sheets, type Sheet, type NewSheet } from '../schema';
+import { sheets, doseRecords, type Sheet, type NewSheet } from '../schema';
 import { createDoseRecord } from './doseRecords';
 import { getPillMedicationById } from './pillMedications';
 
@@ -139,6 +139,44 @@ export async function initializeSheet(
   }
 
   return created;
+}
+
+/**
+ * シート進行チェック（起動時に呼ぶ）
+ *
+ * 現在のシートの最終 dose_record 日が過去になっていたら、そのシートを完了にして
+ * 翌日から始まる次のシートを自動作成する。長期不在でも今日を含むシートまで繰り返す。
+ */
+export async function checkAndProgressSheet(medicationId: string): Promise<void> {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const db = getDb();
+
+  // 上限 120 パック（約10年）でフェイルセーフ停止
+  for (let pass = 0; pass < 120; pass++) {
+    const sheet = await getCurrentSheet(medicationId);
+    if (!sheet) return;
+
+    // シートの最終 dose_record を取得
+    const lastRecord = await db
+      .select({ scheduledDate: doseRecords.scheduledDate })
+      .from(doseRecords)
+      .where(eq(doseRecords.sheetId, sheet.id))
+      .orderBy(desc(doseRecords.scheduledDate))
+      .limit(1);
+
+    if (lastRecord.length === 0) return;
+    const lastDate = lastRecord[0].scheduledDate; // 'yyyy-MM-dd'
+
+    // 最終日が今日以降なら、シートはまだ有効
+    if (lastDate >= today) return;
+
+    console.log(
+      `[Sheets] Sheet #${sheet.sheetNumber} ended on ${lastDate}, progressing to next...`
+    );
+    await markSheetCompleted(sheet.id);
+    const nextStart = addDays(parseISO(lastDate), 1);
+    await initializeSheet(medicationId, nextStart);
+  }
 }
 
 /**
