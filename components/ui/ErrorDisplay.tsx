@@ -5,7 +5,7 @@
  */
 
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { palette, typography, spacing, radius } from '@/design-tokens';
 
 type ErrorDisplayProps = {
@@ -40,7 +40,7 @@ export function ErrorDisplay({
 
         <Pressable
           style={[styles.button, styles.secondaryButton]}
-          onPress={() => router.replace(backUrl)}
+          onPress={() => router.replace(backUrl as Href)}
         >
           <Text style={styles.secondaryButtonText}>ホームに戻る</Text>
         </Pressable>
