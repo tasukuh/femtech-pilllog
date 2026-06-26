@@ -27,21 +27,33 @@ type PackageInfo = {
   localizedDescription: string;
 };
 
+type DiagInfo = {
+  key: string;
+  offeringIds: string;
+  packageCount: number;
+  error: string;
+};
+
 export default function PaywallModal() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [packageInfo, setPackageInfo] = useState<PackageInfo | null>(null);
+  const [diagInfo, setDiagInfo] = useState<DiagInfo | null>(null);
 
   useEffect(() => {
     loadOfferings();
   }, []);
 
   const loadOfferings = async () => {
+    const rcKey = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY;
+    const diag: DiagInfo = { key: rcKey ? `${rcKey.slice(0, 12)}…` : 'MISSING', offeringIds: '', packageCount: 0, error: '' };
     try {
       const Purchases = (await import('react-native-purchases')).default;
       const offerings = await Purchases.getOfferings();
+      diag.offeringIds = Object.keys(offerings.all).join(', ') || 'none';
+      diag.packageCount = offerings.current?.availablePackages.length ?? 0;
       const pkg = offerings.current?.availablePackages[0];
       if (pkg) {
         setPackageInfo({
@@ -50,9 +62,11 @@ export default function PaywallModal() {
           localizedDescription: pkg.product.description,
         });
       }
-    } catch (err) {
+    } catch (err: any) {
+      diag.error = err?.message ?? String(err);
       console.warn('[Paywall] Could not load offerings:', err);
     } finally {
+      setDiagInfo(diag);
       setIsLoading(false);
     }
   };
@@ -181,6 +195,17 @@ export default function PaywallModal() {
         <Text style={styles.legalNote}>
           一度購入すると永続的に利用できます。追加料金は発生しません。
         </Text>
+
+        {/* 診断パネル（価格が取れない時のみ表示） */}
+        {!packageInfo && diagInfo && (
+          <View style={styles.diagPanel}>
+            <Text style={styles.diagTitle}>🔍 診断情報</Text>
+            <Text style={styles.diagText}>key: {diagInfo.key}</Text>
+            <Text style={styles.diagText}>offerings: {diagInfo.offeringIds || 'none'}</Text>
+            <Text style={styles.diagText}>packages: {diagInfo.packageCount}</Text>
+            {diagInfo.error ? <Text style={styles.diagError}>error: {diagInfo.error}</Text> : null}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -296,5 +321,27 @@ const styles = StyleSheet.create({
     color: palette.muted,
     textAlign: 'center',
     lineHeight: typography.scale.xs * typography.lineHeight.normal,
+  },
+  diagPanel: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    gap: 4,
+  },
+  diagTitle: {
+    fontSize: typography.scale.xs,
+    fontWeight: typography.weight.bold,
+    color: '#00ff88',
+    marginBottom: 4,
+  },
+  diagText: {
+    fontSize: 11,
+    color: '#cccccc',
+    fontFamily: 'Courier',
+  },
+  diagError: {
+    fontSize: 11,
+    color: '#ff6b6b',
+    fontFamily: 'Courier',
   },
 });
