@@ -31,17 +31,21 @@ export async function requestHealthPermissions(): Promise<boolean> {
 
   try {
     const AppleHealthKit = (await import('react-native-health')).default;
-    return new Promise((resolve) => {
-      AppleHealthKit.initHealthKit(HEALTH_PERMISSIONS, (error: string) => {
-        if (error) {
-          console.warn('[Health] Permission request failed:', error);
-          resolve(false);
-          return;
-        }
-        console.log('[Health] HealthKit permissions granted');
-        resolve(true);
-      });
-    });
+    return await Promise.race([
+      new Promise<boolean>((resolve) => {
+        AppleHealthKit.initHealthKit(HEALTH_PERMISSIONS, (error: string) => {
+          if (error) {
+            console.warn('[Health] Permission request failed:', error);
+            resolve(false);
+            return;
+          }
+          console.log('[Health] HealthKit permissions granted');
+          resolve(true);
+        });
+      }),
+      // 保険: initHealthKit の callback が返らない場合でもボタンが無限スピナーにならない
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 60000)),
+    ]);
   } catch (err) {
     console.warn('[Health] HealthKit not available:', err);
     return false;
