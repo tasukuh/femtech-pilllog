@@ -1,19 +1,21 @@
 /**
- * HealthKit 権限の要求と状態管理
+ * HealthKit 権限の要求と状態管理（@kingstinct/react-native-healthkit / New Architecture 対応）
  *
  * iOS 専用。Platform.OS !== 'ios' の場合は全て noop。
- * 権限は Premium 購入後の初回HealthDashboard 表示時に要求する。
+ * 権限は Premium 購入後の初回 HealthDashboard 表示時に要求する。
  */
 
 import { Platform } from 'react-native';
-import type { HealthKitPermissions } from 'react-native-health';
+import {
+  isHealthDataAvailable,
+  requestAuthorization,
+} from '@kingstinct/react-native-healthkit';
 
-export const HEALTH_PERMISSIONS: HealthKitPermissions = {
-  permissions: {
-    read: ['SleepAnalysis' as any, 'RestingHeartRate' as any],
-    write: [],
-  },
-};
+/** 読み取りを要求する型（睡眠分析・安静時心拍数） */
+const READ_TYPES = [
+  'HKCategoryTypeIdentifierSleepAnalysis',
+  'HKQuantityTypeIdentifierRestingHeartRate',
+] as const;
 
 /**
  * app_settings に保存する「ヘルスケア接続済み」フラグのキー。
@@ -22,57 +24,34 @@ export const HEALTH_PERMISSIONS: HealthKitPermissions = {
  */
 export const HEALTH_CONNECTED_KEY = 'health_connected';
 
-/**
- * HealthKit を初期化して権限を要求する。
- * iOS 以外では即座に false を返す。
- */
 export type HealthPermissionResult = { granted: boolean; error: string | null };
 
+/**
+ * HealthKit の読み取り権限を要求する（iOS の権限ダイアログを表示）。
+ * iOS 以外では即座に false を返す。
+ */
 export async function requestHealthPermissions(): Promise<HealthPermissionResult> {
   if (Platform.OS !== 'ios') return { granted: false, error: 'not-ios' };
 
   try {
-    const AppleHealthKit = (await import('react-native-health')).default;
-    return await Promise.race([
-      new Promise<HealthPermissionResult>((resolve) => {
-        AppleHealthKit.initHealthKit(HEALTH_PERMISSIONS, (error: string) => {
-          if (error) {
-            console.warn('[Health] Permission request failed:', error);
-            resolve({ granted: false, error: String(error) });
-            return;
-          }
-          console.log('[Health] HealthKit permissions granted');
-          resolve({ granted: true, error: null });
-        });
-      }),
-      // 保険: initHealthKit の callback が返らない場合でもボタンが無限スピナーにならない
-      new Promise<HealthPermissionResult>((resolve) =>
-        setTimeout(() => resolve({ granted: false, error: 'timeout-60s（callback未発火＝ネイティブ未到達の疑い）' }), 60000)
-      ),
-    ]);
+    // 読み取り権限はプライバシー上、許可/拒否の区別が取れない。
+    // requestAuthorization が成功（=ダイアログ完了）すれば true。
+    const granted = await requestAuthorization({ toRead: READ_TYPES });
+    console.log('[Health] requestAuthorization:', granted);
+    return { granted, error: granted ? null : 'authorization-not-completed' };
   } catch (err: any) {
-    console.warn('[Health] HealthKit not available:', err);
+    console.warn('[Health] Permission request failed:', err);
     return { granted: false, error: err?.message ?? String(err) };
   }
 }
 
 /**
- * HealthKit が利用可能か確認
+ * HealthKit がこの端末で利用可能か確認（iPad 等の非対応端末を除外）。
  */
 export async function isHealthKitAvailable(): Promise<boolean> {
   if (Platform.OS !== 'ios') return false;
-
   try {
-    const AppleHealthKit = (await import('react-native-health')).default;
-    return await Promise.race([
-      new Promise<boolean>((resolve) => {
-        AppleHealthKit.isAvailable((error: Object, available: boolean) => {
-          resolve(!error && available);
-        });
-      }),
-      // フォールバック: ネイティブ callback が返らなくても固まらない（iPhone は HealthKit 利用可）
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 3000)),
-    ]);
+    return isHealthDataAvailable();
   } catch {
     return false;
   }

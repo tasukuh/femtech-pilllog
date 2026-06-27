@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "pilllog",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
@@ -66,9 +65,10 @@
         }
       ],
       [
-        "react-native-health",
+        "@kingstinct/react-native-healthkit",
         {
-          "isClinicalDataEnabled": false
+          "NSHealthShareUsageDescription": "睡眠時間と安静時心拍数を読み込み、服薬との相関を分析します。データはデバイス内にのみ保存されます",
+          "background": false
         }
       ]
     ],

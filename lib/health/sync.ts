@@ -1,22 +1,23 @@
 /**
- * HealthKit データの読み書き
+ * HealthKit データの読み取り（@kingstinct/react-native-healthkit / New Architecture 対応）
  *
  * 読み取り: 睡眠時間・安静時心拍数 → ローカル DB に保存
  *
- * NOTE: react-native-health v1.x は HKCategoryTypeIdentifierContraceptive への
- * 書き込み（saveContraceptive）をサポートしていない。
- * 将来的にカスタム Expo Module で対応予定。
+ * NOTE: 服薬記録の HealthKit への書き込み（避妊法カテゴリ）は将来対応。
  */
 
 import { Platform } from 'react-native';
 import { format, subDays } from 'date-fns';
-import type { HealthValue } from 'react-native-health';
+import {
+  queryCategorySamples,
+  queryQuantitySamples,
+} from '@kingstinct/react-native-healthkit';
 import { upsertHealthSamples } from '../db/queries/healthSamples';
 import type { NewHealthSampleRow } from '../db/schema';
 
-// iOS 16以降の sleep analysis 値
-// 0 = inBed, 1 = asleep (legacy), 2 = awakeInBed, 3 = asleepCore, 4 = asleepDeep, 5 = asleepREM
-const SLEEP_VALUES = new Set([1, 3, 4, 5]);
+// HKCategoryValueSleepAnalysis: 0=inBed, 1=asleep(legacy), 2=awake, 3=core, 4=deep, 5=REM
+// 実際の睡眠区間のみ集計（inBed と awake を除外）
+const SLEEP_VALUES = new Set<number>([1, 3, 4, 5]);
 
 /**
  * 過去 N 週の睡眠データを HealthKit から取得してキャッシュに保存
@@ -25,34 +26,22 @@ export async function syncSleepSamples(weeks: number = 12): Promise<void> {
   if (Platform.OS !== 'ios') return;
 
   try {
-    const AppleHealthKit = (await import('react-native-health')).default;
     const endDate = new Date();
     const startDate = subDays(endDate, weeks * 7);
 
-    const rawSamples = await new Promise<HealthValue[]>((resolve, reject) => {
-      AppleHealthKit.getSleepSamples(
-        {
-          startDate: startDate.toISOString(),
-          endDate: endDate.toISOString(),
-          limit: 0,
-        },
-        (err: string, results: HealthValue[]) => {
-          if (err) reject(new Error(err));
-          else resolve(results ?? []);
-        }
-      );
+    const samples = await queryCategorySamples('HKCategoryTypeIdentifierSleepAnalysis', {
+      limit: 0, // 全件
+      filter: { date: { startDate, endDate } },
     });
 
-    // 実際の睡眠区間のみフィルタ（inBed と awakeInBed を除外）
-    const sleepSamples = rawSamples.filter((s) => SLEEP_VALUES.has(s.value));
+    // 実際の睡眠区間のみフィルタ
+    const sleepSamples = samples.filter((s) => SLEEP_VALUES.has(s.value as number));
 
-    // 日付ごとに分計算して NewHealthSampleRow に変換
+    // 日付ごとに合計分数を計算
     const byDate = new Map<string, number>();
     for (const s of sleepSamples) {
-      const date = format(new Date(s.startDate), 'yyyy-MM-dd');
-      const durationMins = Math.round(
-        (new Date(s.endDate).getTime() - new Date(s.startDate).getTime()) / 60000
-      );
+      const date = format(s.startDate, 'yyyy-MM-dd');
+      const durationMins = Math.round((s.endDate.getTime() - s.startDate.getTime()) / 60000);
       byDate.set(date, (byDate.get(date) ?? 0) + durationMins);
     }
 
@@ -79,32 +68,22 @@ export async function syncRestingHeartRate(weeks: number = 12): Promise<void> {
   if (Platform.OS !== 'ios') return;
 
   try {
-    const AppleHealthKit = (await import('react-native-health')).default;
     const endDate = new Date();
     const startDate = subDays(endDate, weeks * 7);
 
-    const rawSamples = await new Promise<HealthValue[]>((resolve, reject) => {
-      AppleHealthKit.getRestingHeartRateSamples(
-        {
-          startDate: startDate.toISOString(),
-          endDate: endDate.toISOString(),
-          limit: 0,
-          ascending: true,
-        },
-        (err: string, results: HealthValue[]) => {
-          if (err) reject(new Error(err));
-          else resolve(results ?? []);
-        }
-      );
+    const samples = await queryQuantitySamples('HKQuantityTypeIdentifierRestingHeartRate', {
+      limit: 0, // 全件
+      ascending: true,
+      filter: { date: { startDate, endDate } },
     });
 
-    const rows: NewHealthSampleRow[] = rawSamples.map((s) => ({
-      id: s.id ?? `rhr-${s.startDate}`,
+    const rows: NewHealthSampleRow[] = samples.map((s) => ({
+      id: s.uuid ?? `rhr-${s.startDate.toISOString()}`,
       sampleType: 'resting_hr' as const,
-      date: format(new Date(s.startDate), 'yyyy-MM-dd'),
-      value: Math.round(s.value),
-      sourceStartAt: s.startDate,
-      sourceEndAt: s.endDate,
+      date: format(s.startDate, 'yyyy-MM-dd'),
+      value: Math.round(s.quantity),
+      sourceStartAt: s.startDate.toISOString(),
+      sourceEndAt: s.endDate.toISOString(),
     }));
 
     await upsertHealthSamples('resting_hr', startDate, endDate, rows);
