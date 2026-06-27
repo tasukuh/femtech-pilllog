@@ -164,7 +164,7 @@ export function HealthDashboard({ sheetId }: Props) {
   return (
     <Card style={styles.card}>
       <Text style={styles.sectionTitle}>ヘルスケア相関グラフ</Text>
-      <Text style={styles.subtitle}>過去12週間の服薬率・睡眠・心拍の推移</Text>
+      <Text style={styles.subtitle}>過去12週間の服薬日数・睡眠・心拍の推移</Text>
       <CorrelationChart data={correlationData} />
       <Text style={styles.disclaimer}>
         このグラフは参考情報です。医療アドバイスではありません。

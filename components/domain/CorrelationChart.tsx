@@ -1,5 +1,5 @@
 /**
- * 服薬遵守率 × 睡眠 × 安静時心拍の 12 週 SVG チャート
+ * 服薬日数 × 睡眠 × 安静時心拍の 12 週 SVG チャート
  */
 
 import { useMemo } from 'react';
@@ -68,7 +68,7 @@ export function CorrelationChart({ data }: Props) {
   const totalHeight = CHART_HEIGHT;
 
   return (
-    <View accessibilityLabel="服薬遵守率と健康データの12週間グラフ">
+    <View accessibilityLabel="服薬日数と健康データの12週間グラフ">
       <Svg width={totalWidth} height={totalHeight}>
         {/* グリッドライン */}
         {[0, 50, 100].map((pct) => {
@@ -86,9 +86,10 @@ export function CorrelationChart({ data }: Props) {
           );
         })}
 
-        {/* Y軸ラベル */}
-        {[0, 50, 100].map((pct) => {
+        {/* Y軸ラベル（服薬日数: 0日・4日・7日） */}
+        {([0, 50, 100] as const).map((pct) => {
           const y = PADDING_TOP + drawHeight - (pct / 100) * drawHeight;
+          const label = pct === 0 ? '0' : pct === 50 ? '4日' : '7日';
           return (
             <SvgText
               key={pct}
@@ -98,7 +99,7 @@ export function CorrelationChart({ data }: Props) {
               fontSize={8}
               fill={palette.muted}
             >
-              {pct}
+              {label}
             </SvgText>
           );
         })}
@@ -177,7 +178,7 @@ export function CorrelationChart({ data }: Props) {
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: palette.primary }]} />
-          <Text style={styles.legendText}>服薬率 (%)</Text>
+          <Text style={styles.legendText}>服薬日数 (/週)</Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: palette.success }]} />
