@@ -445,7 +445,7 @@ export default function SettingsScreen() {
                     if (healthPermissionGranted) {
                       Linking.openSettings();
                     } else {
-                      const granted = await requestHealthPermissions();
+                      const { granted } = await requestHealthPermissions();
                       if (granted) await setSetting(HEALTH_CONNECTED_KEY, 'true');
                       setHealthPermissionGranted(granted);
                       if (!granted) Linking.openSettings();

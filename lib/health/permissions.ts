@@ -26,29 +26,33 @@ export const HEALTH_CONNECTED_KEY = 'health_connected';
  * HealthKit を初期化して権限を要求する。
  * iOS 以外では即座に false を返す。
  */
-export async function requestHealthPermissions(): Promise<boolean> {
-  if (Platform.OS !== 'ios') return false;
+export type HealthPermissionResult = { granted: boolean; error: string | null };
+
+export async function requestHealthPermissions(): Promise<HealthPermissionResult> {
+  if (Platform.OS !== 'ios') return { granted: false, error: 'not-ios' };
 
   try {
     const AppleHealthKit = (await import('react-native-health')).default;
     return await Promise.race([
-      new Promise<boolean>((resolve) => {
+      new Promise<HealthPermissionResult>((resolve) => {
         AppleHealthKit.initHealthKit(HEALTH_PERMISSIONS, (error: string) => {
           if (error) {
             console.warn('[Health] Permission request failed:', error);
-            resolve(false);
+            resolve({ granted: false, error: String(error) });
             return;
           }
           console.log('[Health] HealthKit permissions granted');
-          resolve(true);
+          resolve({ granted: true, error: null });
         });
       }),
       // 保険: initHealthKit の callback が返らない場合でもボタンが無限スピナーにならない
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 60000)),
+      new Promise<HealthPermissionResult>((resolve) =>
+        setTimeout(() => resolve({ granted: false, error: 'timeout-60s（callback未発火＝ネイティブ未到達の疑い）' }), 60000)
+      ),
     ]);
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[Health] HealthKit not available:', err);
-    return false;
+    return { granted: false, error: err?.message ?? String(err) };
   }
 }
 

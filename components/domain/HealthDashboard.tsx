@@ -34,6 +34,7 @@ export function HealthDashboard({ sheetId }: Props) {
   const { isPremium } = usePremium();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
+  const [diagError, setDiagError] = useState<string | null>(null);
 
   // iOS 以外は表示しない
   if (Platform.OS !== 'ios') return null;
@@ -54,7 +55,7 @@ export function HealthDashboard({ sheetId }: Props) {
       const connected = await getSetting(HEALTH_CONNECTED_KEY);
       if (connected === 'true') {
         // 既に接続済み: 再初期化（未許可項目だけダイアログ、許可済みは無音）してから読み込む
-        const granted = await requestHealthPermissions();
+        const { granted } = await requestHealthPermissions();
         if (!cancelled) setHasPermission(granted);
       } else {
         if (!cancelled) setHasPermission(false); // 「ヘルスケアを接続する」ボタンを表示
@@ -67,10 +68,12 @@ export function HealthDashboard({ sheetId }: Props) {
 
   const handleRequestPermission = async () => {
     setIsRequestingPermission(true);
-    const granted = await requestHealthPermissions();
+    setDiagError(null);
+    const { granted, error } = await requestHealthPermissions();
     if (granted) {
       await setSetting(HEALTH_CONNECTED_KEY, 'true');
     }
+    setDiagError(granted ? null : error ?? 'unknown');
     setHasPermission(granted);
     setIsRequestingPermission(false);
   };
@@ -135,6 +138,12 @@ export function HealthDashboard({ sheetId }: Props) {
         >
           ヘルスケアを接続する
         </Button>
+        {diagError ? (
+          <View style={styles.diagPanel}>
+            <Text style={styles.diagTitle}>🔍 HealthKit 診断</Text>
+            <Text style={styles.diagText}>error: {diagError}</Text>
+          </View>
+        ) : null}
       </Card>
     );
   }
@@ -256,5 +265,21 @@ const styles = StyleSheet.create({
     color: palette.muted,
     textAlign: 'center',
     marginTop: spacing.xs,
+  },
+  diagPanel: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    gap: 4,
+  },
+  diagTitle: {
+    fontSize: typography.scale.xs,
+    fontWeight: typography.weight.bold,
+    color: '#00ff88',
+  },
+  diagText: {
+    fontSize: 11,
+    color: '#ff6b6b',
+    fontFamily: 'Courier',
   },
 });
