@@ -4,11 +4,12 @@
  * RevenueCat の entitlement 'premium' を参照して返す。
  * Purchases.configure() は app/_layout.tsx の initialize() で一度だけ呼ぶこと。
  *
- * 無料 / Premium の境界:
+ * 無料 / Premium の境界（本来の設計。FREE_LAUNCH 中は全て無償開放）:
  *   - 1行日記を書く・編集          : 無料
  *   - 過去 FREE_HISTORY_DAYS 日の閲覧 : 無料
  *   - それ以前の履歴・メモの閲覧     : Premium
  *   - Appleヘルスケア連携（睡眠・心拍相関グラフ）: Premium
+ *   - 複数ピル登録                  : Premium
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -19,6 +20,16 @@ import { differenceInCalendarDays, startOfDay } from 'date-fns';
 export const FREE_HISTORY_DAYS = 7;
 
 const ENTITLEMENT_ID = 'premium';
+
+/**
+ * 無償リリース中の一時フラグ。
+ *
+ * true の間は RevenueCat の entitlement 判定を待たず、常に Premium 扱いにする
+ * （課金導線・ペイウォールへの分岐は isPremium=false の枝なので自動的に到達しなくなる）。
+ * RevenueCatの設定・購入フロー自体は変更していないため、有料化を再開する時は
+ * この値を false に戻すだけでよい。
+ */
+const FREE_LAUNCH = true;
 
 /**
  * QA / TestFlight 用のビルド時バイパス。
@@ -32,18 +43,20 @@ const ENTITLEMENT_ID = 'premium';
  */
 const QA_PREMIUM = process.env.EXPO_PUBLIC_QA_PREMIUM === '1';
 
+const FORCE_PREMIUM = FREE_LAUNCH || QA_PREMIUM;
+
 /**
  * Premium 加入状態を返すフック。
  * RevenueCat が利用できない環境（Android・シミュレータ等）では false を返す。
  */
 export function usePremium(): { isPremium: boolean; isLoading: boolean } {
-  const [isPremium, setIsPremium] = useState(QA_PREMIUM);
-  const [isLoading, setIsLoading] = useState(!QA_PREMIUM);
+  const [isPremium, setIsPremium] = useState(FORCE_PREMIUM);
+  const [isLoading, setIsLoading] = useState(!FORCE_PREMIUM);
   const listenerRef = useRef<((info: import('react-native-purchases').CustomerInfo) => void) | null>(null);
 
   useEffect(() => {
-    // QA バイパス時は RevenueCat を呼ばず常に Premium 扱い
-    if (QA_PREMIUM) return;
+    // FREE_LAUNCH / QA バイパス時は RevenueCat を呼ばず常に Premium 扱い
+    if (FORCE_PREMIUM) return;
 
     if (Platform.OS !== 'ios') {
       setIsLoading(false);
